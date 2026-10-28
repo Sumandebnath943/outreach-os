@@ -1,0 +1,22 @@
+name: OutreachOS Queue & Thread Reply Poller
+
+on:
+  schedule:
+    # Runs every 10 minutes, Monday through Friday
+    - cron: '*/10 * * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  process_outreach_queue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger OutreachOS Queue Processor
+        run: |
+          if [ -z "${{ secrets.OUTREACH_OS_URL }}" ]; then
+            echo "OUTREACH_OS_URL secret not configured yet; skipping."
+            exit 0
+          fi
+          curl -X POST "${{ secrets.OUTREACH_OS_URL }}/api/cron/process-queue" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --fail --silent --show-error
