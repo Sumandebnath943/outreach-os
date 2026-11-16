@@ -1,519 +1,253 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  CheckCircle2,
-  Eye,
-  Flame,
-  Layers,
-  RotateCcw,
-  Save,
-  Sparkles,
-} from 'lucide-react';
-import CommandHeader from '@/components/CommandHeader';
-import {
-  BranchVariant,
-  ROLE_TRACK_META,
-  RoleTrack,
-  SequenceTemplate,
-} from '@/types/outreach';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { GitFork, Save, Trash2 } from "lucide-react";
+import { api, usePoll } from "@/lib/client";
+import { TEMPLATE_VARIABLES, TOUCH_SLOTS } from "@/lib/meta";
+import { findUnresolved, mergeVars, previewLinks, toHtml } from "@/lib/render";
+import { ROLE_TRACKS, type BranchVariant, type Lead, type RoleTrack, type SequenceTemplate, type SystemSettings } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { Badge, Button, Card, Input, Label, Textarea, toast } from "@/components/ui";
 
-interface TouchStepOption {
-  touchNumber: 1 | 2 | 3 | 4;
-  branchVariant: BranchVariant;
-  title: string;
-  subtitle: string;
-  dayLabel: string;
-}
+const SAMPLE_ID = "00000000-0000-4000-8000-000000000000";
 
-const TOUCH_STEPS: TouchStepOption[] = [
-  {
-    touchNumber: 1,
-    branchVariant: 'STANDARD',
-    title: 'Touch 1 — Primary Cold Pitch',
-    subtitle: '9+ yrs Brand/GTM + 21 solo AI systems',
-    dayLabel: 'Day 0 (Immediate)',
-  },
-  {
-    touchNumber: 2,
-    branchVariant: 'WARM',
-    title: 'Touch 2A — Warm Intent Branch',
-    subtitle: 'Clicked portfolio OR 2+ opens · 2-min live walkthrough offer',
-    dayLabel: 'Day +3 Business Days',
-  },
-  {
-    touchNumber: 2,
-    branchVariant: 'COLD',
-    title: 'Touch 2B — Cold Proof Bump',
-    subtitle: '0 clicks & ≤1 open · 3-sentence executive summary bump',
-    dayLabel: 'Day +3 Business Days',
-  },
-  {
-    touchNumber: 3,
-    branchVariant: 'STANDARD',
-    title: 'Touch 3 — Value & Technical/GTM Insight Shift',
-    subtitle: 'Shares AEO/GEO Markdown & 46-agent <$5/mo write-ups',
-    dayLabel: 'Day +8 Business Days (+5d)',
-  },
-  {
-    touchNumber: 4,
-    branchVariant: 'STANDARD',
-    title: 'Touch 4 — Polite Executive Breakup',
-    subtitle: 'Closes loop professionally & leaves portfolio for next quarter',
-    dayLabel: 'Day +14 Business Days (+6d)',
-  },
-];
-
-const MERGE_VARIABLES = [
-  { token: '{{first_name}}', desc: 'Recipient first name (defaults to "Team")' },
-  { token: '{{company_name}}', desc: 'Target organization name' },
-  { token: '{{target_role_opening}}', desc: 'Specific open role title' },
-  { token: '{{custom_icebreaker}}', desc: '1-sentence hook (collapses cleanly if blank)' },
-  { token: '{{tracked_portfolio_url}}', desc: 'Tracked portfolio URL (?ref={{lead_uuid}})' },
-  { token: '{{tracked_resume_url}}', desc: 'Tracked resume URL (?ref={{lead_uuid}})' },
-  { token: '{{original_subject}}', desc: 'Original Touch 1 subject for Re: threading' },
-];
-
-export default function SequenceStudioPage() {
-  const [templates, setTemplates] = useState<SequenceTemplate[]>([]);
-  const [selectedTrack, setSelectedTrack] = useState<RoleTrack>('HYBRID_DEFAULT');
-  const [selectedStepIdx, setSelectedStepIdx] = useState(0);
-
-  // Active editor fields
-  const [subjectTemplate, setSubjectTemplate] = useState('');
-  const [bodyTemplate, setBodyTemplate] = useState('');
-  const [waitDays, setWaitDays] = useState(0);
-  const [sameThread, setSameThread] = useState(false);
-
-  // Preview sample persona
-  const [previewFirstName, setPreviewFirstName] = useState('Ananya');
-  const [previewCompany, setPreviewCompany] = useState('Sarvam AI');
-  const [previewRole, setPreviewRole] = useState('AI Product Marketing Manager (AI PMM)');
-  const [previewIcebreaker, setPreviewIcebreaker] = useState(
-    'Loved your recent enterprise rollout of sovereign voice agents across Indian banking.'
-  );
-
+export default function TemplatesPage() {
+  const { data, reload } = usePoll<{ templates: SequenceTemplate[] }>("/api/templates", 0);
+  const { data: s } = usePoll<{ settings: SystemSettings }>("/api/settings", 0);
+  const [track, setTrack] = useState<RoleTrack>("HYBRID_DEFAULT");
+  const [slot, setSlot] = useState(0);
+  const [form, setForm] = useState({ subject_template: "", body_template: "", wait_business_days: 0, same_thread: true });
   const [saving, setSaving] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [sample, setSample] = useState({
+    first_name: "Priya",
+    company_name: "Acme AI",
+    target_role_opening: "AI Product Marketing Manager",
+    custom_icebreaker: "Loved Acme’s launch film for the GenAI suite last week.",
+  });
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
-  const loadTemplates = useCallback(async () => {
-    const res = await fetch('/api/templates', { cache: 'no-store' });
-    if (!res.ok) return;
-    const data = await res.json();
-    setTemplates(data.templates || []);
-  }, []);
+  const templates = useMemo(() => data?.templates ?? [], [data]);
+  const { touch, variant } = TOUCH_SLOTS[slot];
+  const find = (t: RoleTrack, v: BranchVariant = variant as BranchVariant) =>
+    templates.find((x) => x.role_track === t && x.touch_number === touch && x.branch_variant === v);
+  const own = find(track);
+  const inherited = !own && track !== "HYBRID_DEFAULT" ? find("HYBRID_DEFAULT") : undefined;
+  const active = own ?? inherited;
 
   useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
-
-  const currentStep = TOUCH_STEPS[selectedStepIdx];
-
-  useEffect(() => {
-    if (templates.length === 0) return;
-    const match = templates.find(
-      (t) =>
-        t.role_track === selectedTrack &&
-        t.touch_number === currentStep.touchNumber &&
-        t.branch_variant === currentStep.branchVariant
-    );
-    if (match) {
-      setSubjectTemplate(match.subject_template);
-      setBodyTemplate(match.body_template);
-      setWaitDays(match.wait_business_days);
-      setSameThread(match.same_thread);
-    }
-  }, [templates, selectedTrack, currentStep]);
-
-  const handleSaveTemplate = async () => {
-    setSaving(true);
-    setStatusMessage(null);
-    try {
-      const res = await fetch('/api/templates', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role_track: selectedTrack,
-          touch_number: currentStep.touchNumber,
-          branch_variant: currentStep.branchVariant,
-          subject_template: subjectTemplate,
-          body_template: bodyTemplate,
-          wait_business_days: waitDays,
-          same_thread: sameThread,
-        }),
+    if (active)
+      setForm({
+        subject_template: active.subject_template,
+        body_template: active.body_template,
+        wait_business_days: active.wait_business_days,
+        same_thread: active.same_thread,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setTemplates(data.templates || []);
-        setStatusMessage('Sequence template saved to database.');
-      }
+    else setForm({ subject_template: "", body_template: "", wait_business_days: touch === 1 ? 0 : 3, same_thread: touch !== 1 });
+  }, [active?.id, active?.subject_template, active?.body_template, touch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dirty =
+    !active ||
+    form.subject_template !== active.subject_template ||
+    form.body_template !== active.body_template ||
+    form.wait_business_days !== active.wait_business_days ||
+    form.same_thread !== active.same_thread;
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api("/api/templates", { method: "PUT", json: { role_track: track, touch_number: touch, branch_variant: variant, ...form } });
+      toast(`${track} · ${TOUCH_SLOTS[slot].label} saved`);
+      reload();
+    } catch (e) {
+      toast((e as Error).message, "err");
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const handleResetDefault = async () => {
-    setSaving(true);
-    setStatusMessage(null);
+  async function removeOverride() {
+    if (!own || !confirm(`Delete the ${track} override? Leads on this track will fall back to HYBRID_DEFAULT.`)) return;
     try {
-      const res = await fetch('/api/templates', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'RESET_DEFAULT',
-          role_track: selectedTrack,
-          touch_number: currentStep.touchNumber,
-          branch_variant: currentStep.branchVariant,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTemplates(data.templates || []);
-        setStatusMessage('Restored verified PRD copy for this touch.');
-      }
-    } finally {
-      setSaving(false);
+      await api(`/api/templates?id=${own.id}`, { method: "DELETE" });
+      toast("Override removed");
+      reload();
+    } catch (e) {
+      toast((e as Error).message, "err");
     }
-  };
+  }
 
-  // Compute live preview
-  const touch1Match = templates.find(
-    (t) =>
-      t.role_track === selectedTrack &&
-      t.touch_number === 1 &&
-      t.branch_variant === 'STANDARD'
-  );
-  const resolvedTouch1Subject = (
-    touch1Match?.subject_template ||
-    '9+ yrs Brand Marketing + 21 AI products shipped solo — Open roles at {{company_name}}?'
-  )
-    .replace(/\{\{\s*first_name\s*\}\}/gi, previewFirstName || 'Team')
-    .replace(/\{\{\s*company_name\s*\}\}/gi, previewCompany || 'your team')
-    .replace(/\{\{\s*target_role_opening\s*\}\}/gi, previewRole || 'Senior Brand / AI PMM');
+  function insertVar(v: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+    const { selectionStart: a, selectionEnd: b } = el;
+    const next = form.body_template.slice(0, a) + v + form.body_template.slice(b);
+    setForm({ ...form, body_template: next });
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(a + v.length, a + v.length);
+    });
+  }
 
-  const renderedPreviewSubject = subjectTemplate
-    .replace(/\{\{\s*first_name\s*\}\}/gi, previewFirstName || 'Team')
-    .replace(/\{\{\s*company_name\s*\}\}/gi, previewCompany || 'your team')
-    .replace(/\{\{\s*target_role_opening\s*\}\}/gi, previewRole || 'Senior Brand / AI PMM')
-    .replace(/\{\{\s*original_subject\s*\}\}/gi, resolvedTouch1Subject);
-
-  const formattedIcebreaker = previewIcebreaker.trim()
-    ? `${previewIcebreaker.trim()}\n\n`
-    : '';
-
-  const renderedPreviewBody = bodyTemplate
-    .replace(/\{\{\s*first_name\s*\}\}/gi, previewFirstName || 'Team')
-    .replace(/\{\{\s*company_name\s*\}\}/gi, previewCompany || 'your team')
-    .replace(/\{\{\s*target_role_opening\s*\}\}/gi, previewRole || 'Senior Brand / AI PMM')
-    .replace(/\{\{\s*custom_icebreaker\s*\}\}/gi, formattedIcebreaker)
-    .replace(/\{\{\s*original_subject\s*\}\}/gi, resolvedTouch1Subject)
-    .replace(
-      /\{\{\s*tracked_portfolio_url\s*\}\}/gi,
-      'https://sumandebnath.houseofnamus.com/?ref=11111111-2222-4333-8444-555555550001'
-    )
-    .replace(
-      /\{\{\s*tracked_resume_url\s*\}\}/gi,
-      'https://sumandebnath.houseofnamus.com/resume?ref=11111111-2222-4333-8444-555555550001'
-    )
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  const preview = useMemo(() => {
+    const lead = { ...sample, last_name: null, job_title: null } as unknown as Lead;
+    const t1 = templates.find((x) => x.role_track === track && x.touch_number === 1) ?? templates.find((x) => x.role_track === "HYBRID_DEFAULT" && x.touch_number === 1);
+    const originalSubject = t1 ? mergeVars(t1.subject_template, lead) : "Original subject";
+    const subject = mergeVars(form.subject_template, lead, { originalSubject });
+    const merged = mergeVars(form.body_template, lead, { originalSubject });
+    const links = previewLinks(SAMPLE_ID, s?.settings.portfolio_base_url ?? "https://sumandebnath.houseofnamus.com", s?.settings.resume_url ?? "https://sumandebnath.houseofnamus.com/resume");
+    return { subject, html: toHtml(merged, links), unresolved: findUnresolved(`${subject}\n${merged}`) };
+  }, [form, sample, s, templates, track]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#09090B]">
-      <CommandHeader />
+    <div className="mx-auto max-w-7xl px-5 py-6">
+      <div className="mb-5">
+        <h1 className="text-xl font-semibold tracking-tight">Sequence &amp; Template Studio</h1>
+        <p className="mt-1 text-sm text-dim">
+          HYBRID_DEFAULT is the master sequence. Fork any touch into a role track to tailor it — un-forked touches inherit the master.
+        </p>
+      </div>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 space-y-6">
-        {/* Top Role Track Selector Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[#27272A] bg-[#121215] p-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-emerald-400" />
-              <h1 className="text-base font-bold uppercase tracking-wider text-[#FAFAFA]">
-                Sequence & Template Studio
-              </h1>
-            </div>
-            <p className="mt-1 text-xs text-zinc-400">
-              Customize all 4 touches (including Touch 2A Warm Intent & Touch 2B Cold Proof Bump) across all 4 executive role tracks.
-            </p>
-          </div>
+      <div className="mb-4 flex gap-1 border-b border-line">
+        {ROLE_TRACKS.map((t) => {
+          const count = templates.filter((x) => x.role_track === t).length;
+          return (
+            <button
+              key={t}
+              onClick={() => setTrack(t)}
+              className={cn("-mb-px border-b px-3 py-2 font-mono text-xs", track === t ? "border-fg text-fg" : "border-transparent text-dim hover:text-fg")}
+            >
+              {t} <span className="text-dim">· {count}/5</span>
+            </button>
+          );
+        })}
+      </div>
 
-          <div className="flex flex-wrap gap-1.5">
-            {(['HYBRID_DEFAULT', 'BRAND', 'AI_PMM', 'AI_PM'] as RoleTrack[]).map(
-              (track) => (
-                <button
-                  key={track}
-                  onClick={() => {
-                    setSelectedTrack(track);
-                    setStatusMessage(null);
-                  }}
-                  className={`rounded border px-3 py-1.5 font-mono text-xs font-semibold transition-all ${
-                    selectedTrack === track
-                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300'
-                      : 'border-[#27272A] bg-[#09090B] text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  {ROLE_TRACK_META[track].shortLabel} — {ROLE_TRACK_META[track].label}
-                </button>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* 5-Step Cadence Selector Strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
-          {TOUCH_STEPS.map((step, idx) => {
-            const active = selectedStepIdx === idx;
-            const isWarm = step.branchVariant === 'WARM';
+      <div className="grid gap-4 lg:grid-cols-[230px_1fr_1fr]">
+        <div className="space-y-1">
+          {TOUCH_SLOTS.map((sl, i) => {
+            const t = templates.find((x) => x.role_track === track && x.touch_number === sl.touch && x.branch_variant === sl.variant);
             return (
               <button
-                key={`${step.touchNumber}_${step.branchVariant}`}
-                onClick={() => {
-                  setSelectedStepIdx(idx);
-                  setStatusMessage(null);
-                }}
-                className={`rounded-lg border p-3 text-left transition-all ${
-                  active
-                    ? isWarm
-                      ? 'border-amber-500/60 bg-amber-500/10'
-                      : 'border-emerald-500/60 bg-[#18181C]'
-                    : 'border-[#27272A] bg-[#121215] hover:bg-[#16161A]'
-                }`}
+                key={sl.label}
+                onClick={() => setSlot(i)}
+                className={cn(
+                  "w-full rounded-md border px-3 py-2.5 text-left transition-colors",
+                  slot === i ? "border-line-strong bg-raised" : "border-transparent hover:bg-card",
+                )}
               >
-                <div className="flex items-center justify-between font-mono text-[10px]">
-                  <span
-                    className={
-                      isWarm
-                        ? 'font-bold text-amber-400 flex items-center gap-1'
-                        : 'font-bold text-emerald-400'
-                    }
-                  >
-                    {isWarm && <Flame className="h-3 w-3" />}
-                    STEP 0{idx + 1}
-                  </span>
-                  <span className="text-zinc-500">{step.dayLabel}</span>
+                <div className="text-[13px]">{sl.label}</div>
+                <div className="mt-0.5 font-mono text-[10px] text-dim">
+                  {t ? (track === "HYBRID_DEFAULT" ? "master" : "override") : track === "HYBRID_DEFAULT" ? "missing" : "inherits master"}
+                  {t && sl.touch > 1 ? ` · +${t.wait_business_days} bd` : ""}
                 </div>
-                <p className="mt-1 text-xs font-bold text-[#FAFAFA] line-clamp-1">
-                  {step.title}
-                </p>
-                <p className="mt-0.5 text-[11px] text-zinc-400 line-clamp-2">
-                  {step.subtitle}
-                </p>
               </button>
             );
           })}
+          <div className="mt-4 rounded-md border border-line p-3 text-[11px] leading-relaxed text-dim">
+            T2A (warm) fires when the lead clicked, visited the portfolio, or opened 2+ times; otherwise T2B (cold). Waits are business days after the previous touch.
+          </div>
         </div>
 
-        {statusMessage && (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 font-mono text-xs text-emerald-300">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>{statusMessage}</span>
-          </div>
-        )}
-
-        {/* Editor & Live Variable Preview Split Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* LEFT: Template Editor */}
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#27272A] pb-3">
-              <div>
-                <h2 className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                  Template Source Editor ({ROLE_TRACK_META[selectedTrack].shortLabel} ·{' '}
-                  {currentStep.title})
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleResetDefault}
-                  disabled={saving}
-                  className="flex items-center gap-1 rounded border border-[#27272A] bg-[#18181C] px-2.5 py-1 text-[11px] font-mono text-zinc-300 hover:text-white"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  <span>Reset Default</span>
-                </button>
-                <button
-                  onClick={handleSaveTemplate}
-                  disabled={saving}
-                  className="flex items-center gap-1 rounded bg-emerald-500 px-3 py-1 text-xs font-bold text-[#09090B] hover:bg-emerald-400"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  <span>{saving ? 'Saving...' : 'Save Template'}</span>
-                </button>
-              </div>
+        <Card className="p-4">
+          {inherited && (
+            <div className="mb-4 flex items-center justify-between rounded-md border border-line bg-bg px-3 py-2 text-xs text-muted">
+              Showing the HYBRID_DEFAULT master. Saving creates a {track} override.
+              <GitFork className="h-3.5 w-3.5" />
             </div>
-
-            {/* Cadence & Threading Controls */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                  Wait Business Days (Excludes Sat/Sun)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={30}
-                  value={waitDays}
-                  onChange={(e) => setWaitDays(Number(e.target.value))}
-                  className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-1.5 font-mono text-xs text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex flex-col justify-end">
-                <label className="flex items-center gap-2 rounded border border-[#27272A] bg-[#09090B] px-3 py-1.5 text-xs text-zinc-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={sameThread}
-                    onChange={(e) => setSameThread(e.target.checked)}
-                    className="rounded border-zinc-700 bg-zinc-900 text-emerald-500"
-                  />
-                  <span className="font-mono text-[11px]">
-                    Send in Same Thread (`In-Reply-To` & `References`)
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            {/* Subject Input */}
+          )}
+          <div className="grid gap-3">
             <div>
-              <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                Subject Template
-              </label>
-              <input
-                type="text"
-                value={subjectTemplate}
-                onChange={(e) => setSubjectTemplate(e.target.value)}
-                className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-xs font-semibold text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
+              <Label>Subject</Label>
+              <Input value={form.subject_template} onChange={(e) => setForm({ ...form, subject_template: e.target.value })} className="font-mono text-[12.5px]" />
+            </div>
+            <div>
+              <Label hint="blank line = paragraph · “- ” = bullet">Body</Label>
+              <Textarea
+                ref={bodyRef}
+                rows={24}
+                value={form.body_template}
+                onChange={(e) => setForm({ ...form, body_template: e.target.value })}
+                className="font-mono text-[12.5px]"
               />
-            </div>
-
-            {/* Merge Variable Reference Pills */}
-            <div>
-              <span className="block font-mono text-[10px] uppercase text-zinc-500 mb-1.5">
-                Click to Copy Dynamic Merge Variable:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {MERGE_VARIABLES.map((v) => (
-                  <button
-                    key={v.token}
-                    type="button"
-                    title={v.desc}
-                    onClick={() =>
-                      setBodyTemplate((prev) => `${prev} ${v.token}`)
-                    }
-                    className="rounded border border-[#27272A] bg-[#09090B] px-2 py-0.5 font-mono text-[11px] text-emerald-400 hover:border-emerald-500/40"
-                  >
-                    {v.token}
+              <div className="mt-2 flex flex-wrap gap-1">
+                {TEMPLATE_VARIABLES.map((v) => (
+                  <button key={v} onClick={() => insertVar(v)} className="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-muted hover:border-line-strong hover:text-fg">
+                    {v}
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* Body Textarea */}
-            <div>
-              <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                Body Template
-              </label>
-              <textarea
-                rows={18}
-                value={bodyTemplate}
-                onChange={(e) => setBodyTemplate(e.target.value)}
-                className="w-full rounded border border-[#27272A] bg-[#09090B] p-3.5 font-mono text-xs leading-relaxed text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* RIGHT: Live Variable Preview Pane */}
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#27272A] pb-3">
-              <div className="flex items-center gap-2">
-                <Eye className="h-4 w-4 text-sky-400" />
-                <h2 className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                  Live Merge Variable & RFC 2822 Preview
-                </h2>
-              </div>
-              <span className="font-mono text-[10px] text-emerald-400 flex items-center gap-1">
-                <Sparkles className="h-3 w-3" />
-                1x1 Open Pixel + Click Wrapper Active
-              </span>
-            </div>
-
-            {/* Sample Lead Variable Inputs */}
-            <div className="grid grid-cols-2 gap-2.5 rounded border border-[#27272A] bg-[#09090B] p-3 text-xs">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-mono text-[10px] text-zinc-500">
-                  {'{{first_name}}'}
-                </label>
-                <input
-                  type="text"
-                  value={previewFirstName}
-                  onChange={(e) => setPreviewFirstName(e.target.value)}
-                  className="mt-0.5 w-full rounded border border-[#27272A] bg-[#121215] px-2 py-1 text-[#FAFAFA]"
+                <Label hint={touch === 2 ? "shared by T2A & T2B" : undefined}>Wait (business days)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={60}
+                  disabled={touch === 1}
+                  value={form.wait_business_days}
+                  onChange={(e) => setForm({ ...form, wait_business_days: Number(e.target.value) })}
                 />
               </div>
               <div>
-                <label className="block font-mono text-[10px] text-zinc-500">
-                  {'{{company_name}}'}
+                <Label>Threading</Label>
+                <label className={cn("flex h-9 items-center gap-2 text-sm", touch === 1 && "opacity-40")}>
+                  <input
+                    type="checkbox"
+                    disabled={touch === 1}
+                    checked={form.same_thread}
+                    onChange={(e) => setForm({ ...form, same_thread: e.target.checked })}
+                    className="accent-zinc-100"
+                  />
+                  Reply in same thread
                 </label>
-                <input
-                  type="text"
-                  value={previewCompany}
-                  onChange={(e) => setPreviewCompany(e.target.value)}
-                  className="mt-0.5 w-full rounded border border-[#27272A] bg-[#121215] px-2 py-1 text-[#FAFAFA]"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block font-mono text-[10px] text-zinc-500">
-                  {'{{custom_icebreaker}}'} (Clear this input to verify zero extra line-break collapse)
-                </label>
-                <input
-                  type="text"
-                  value={previewIcebreaker}
-                  onChange={(e) => setPreviewIcebreaker(e.target.value)}
-                  placeholder="Leave empty to test clean collapse..."
-                  className="mt-0.5 w-full rounded border border-[#27272A] bg-[#121215] px-2 py-1 text-[#FAFAFA]"
-                />
               </div>
             </div>
-
-            {/* Rendered Email Envelope */}
-            <div className="rounded-lg border border-[#27272A] bg-[#09090B] p-4 space-y-3">
-              <div className="space-y-1 border-b border-[#27272A] pb-3 font-mono text-[11px]">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">From:</span>
-                  <span className="text-zinc-200">
-                    &quot;Suman Debnath&quot; &lt;sumandebnath944@gmail.com&gt;
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">To:</span>
-                  <span className="text-zinc-200">
-                    {previewFirstName || 'Team'} &lt;recruiter@
-                    {(previewCompany || 'company').toLowerCase().replace(/\s+/g, '')}.com&gt;
-                  </span>
-                </div>
-                {sameThread && (
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">In-Reply-To / References:</span>
-                    <span className="text-emerald-400">
-                      &lt;CA+OutreachOS_Thread@mail.gmail.com&gt;
-                    </span>
-                  </div>
-                )}
-                <div className="pt-1 text-xs">
-                  <span className="text-zinc-500">Subject: </span>
-                  <span className="font-sans font-bold text-[#FAFAFA]">
-                    {renderedPreviewSubject}
-                  </span>
-                </div>
-              </div>
-
-              <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-zinc-200">
-                {renderedPreviewBody}
-              </pre>
+            <div className="flex items-center justify-between pt-1">
+              {own && track !== "HYBRID_DEFAULT" ? (
+                <Button size="sm" variant="danger" onClick={removeOverride}>
+                  <Trash2 className="h-3 w-3" /> Remove override
+                </Button>
+              ) : (
+                <span />
+              )}
+              <Button variant="primary" onClick={save} loading={saving} disabled={!dirty || !form.subject_template.trim() || !form.body_template.trim()}>
+                <Save className="h-3.5 w-3.5" /> {inherited ? `Fork to ${track}` : "Save template"}
+              </Button>
             </div>
           </div>
-        </div>
-      </main>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-line p-4">
+            <div className="mb-3 text-sm font-medium">Live preview</div>
+            <div className="grid grid-cols-2 gap-2">
+              {(Object.keys(sample) as (keyof typeof sample)[]).map((k) => (
+                <div key={k} className={k === "custom_icebreaker" ? "col-span-2" : ""}>
+                  <Label>{k.replace(/_/g, " ")}</Label>
+                  <Input className="h-8 text-xs" value={sample[k]} onChange={(e) => setSample({ ...sample, [k]: e.target.value })} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="p-4">
+            {preview.unresolved.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-1">
+                {preview.unresolved.map((u) => (
+                  <Badge key={u} tone="rose">
+                    unknown {u}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className="mb-1 font-mono text-[10px] tracking-widest text-dim uppercase">Subject</div>
+            <div className="mb-4 text-sm font-medium">{preview.subject || "—"}</div>
+            <div className="rounded-md bg-white p-5 text-[#202124]">
+              <div dangerouslySetInnerHTML={{ __html: preview.html }} />
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

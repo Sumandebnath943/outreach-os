@@ -1,628 +1,299 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  CheckCircle2,
-  Code2,
-  Copy,
-  KeyRound,
-  Play,
-  Save,
-  Settings,
-  ShieldCheck,
-  Terminal,
-} from 'lucide-react';
-import CommandHeader from '@/components/CommandHeader';
-import {
-  ExecutionMode,
-  GlobalKPIs,
-  Lead,
-  SendProvider,
-  SystemSettings,
-} from '@/types/outreach';
+import { useEffect, useMemo, useState } from "react";
+import { Check, Copy, Link2, Unplug } from "lucide-react";
+import { api, broadcastRefresh, usePoll } from "@/lib/client";
+import { portfolioSnippet } from "@/lib/snippet";
+import type { SystemSettings } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { Badge, Button, Card, Input, Label, Select, toast } from "@/components/ui";
 
-interface Diagnostics {
-  supabaseConfigured: boolean;
-  emailCredentialsConfigured: boolean;
-  googleClientIdSet: boolean;
-  googleClientSecretSet: boolean;
-  gmailRefreshTokenSet: boolean;
-  resendApiKeySet: boolean;
-  cronSecretSet: boolean;
-  adminPasscodeSet: boolean;
+interface SettingsResponse {
+  settings: Omit<SystemSettings, "gmail_refresh_token">;
+  status: {
+    gmailConnected: boolean;
+    gmailTokenSource: "database" | "env" | null;
+    googleClientConfigured: boolean;
+    resendConfigured: boolean;
+    cronSecretSet: boolean;
+    trackingSecretSet: boolean;
+    dashboardAuth: boolean;
+    appBaseUrl: string;
+    ownerTimezone: string;
+    portfolioOrigins: string[];
+  };
 }
 
-export default function SystemSettingsPage() {
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
-  const [kpis, setKpis] = useState<GlobalKPIs | null>(null);
-  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
+type Form = Omit<SystemSettings, "gmail_refresh_token" | "id" | "updated_at" | "next_dispatch_at" | "last_queue_run_at">;
+
+function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <Card className="p-5">
+      <div className="mb-4">
+        <div className="text-sm font-medium">{title}</div>
+        {desc && <div className="mt-0.5 text-xs text-dim">{desc}</div>}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail?: string }) {
+  return (
+    <div className="flex items-center justify-between border-b border-line py-2 text-sm last:border-0">
+      <span className="flex items-center gap-2">
+        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-400" : "bg-rose-400")} />
+        {label}
+      </span>
+      <span className="font-mono text-[11px] text-dim">{detail ?? (ok ? "ok" : "missing")}</span>
+    </div>
+  );
+}
+
+/** Editable subset of the settings (server-managed fields stripped). */
+function toForm(s: SettingsResponse["settings"]): Form {
+  const {
+    id: _id,
+    updated_at: _updated,
+    next_dispatch_at: _next,
+    last_queue_run_at: _lastRun,
+    gmail_refresh_token: _token,
+    ...form
+  } = s as SystemSettings;
+  return form;
+}
+
+export default function SettingsPage() {
+  const { data, setData, error } = usePoll<SettingsResponse>("/api/settings", 0);
+  const [form, setFormState] = useState<Form | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedBanner, setSavedBanner] = useState<string | null>(null);
-  const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const setForm = (f: Form) => {
+    setFormState(f);
+    setDirty(true);
+  };
 
-  // Webhook Test Simulator State
-  const [testLeadId, setTestLeadId] = useState('');
-  const [testPath, setTestPath] = useState('/agents/migi');
-  const [testDuration, setTestDuration] = useState(92);
-  const [webhookResult, setWebhookResult] = useState<string | null>(null);
-
-  const loadSettings = useCallback(async () => {
-    const [settingsRes, leadsRes] = await Promise.all([
-      fetch('/api/settings', { cache: 'no-store' }),
-      fetch('/api/leads', { cache: 'no-store' }),
-    ]);
-    if (settingsRes.ok) {
-      const data = await settingsRes.json();
-      setSettings(data.settings);
-      setKpis(data.kpis);
-      setDiagnostics(data.diagnostics);
-    }
-    if (leadsRes.ok) {
-      const lData = await leadsRes.json();
-      const loadedLeads: Lead[] = lData.leads || [];
-      setLeads(loadedLeads);
-      if (loadedLeads.length > 0 && !testLeadId) {
-        setTestLeadId(loadedLeads[0].id);
-      }
-    }
-  }, [testLeadId]);
+  // Refreshes (e.g. the top-bar mode toggle) update the form only while it has no unsaved edits.
+  useEffect(() => {
+    if (data?.settings && !dirty) setFormState(toForm(data.settings));
+  }, [data?.settings, dirty]);
 
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+    const q = new URLSearchParams(window.location.search).get("gmail");
+    if (!q) return;
+    const msg: Record<string, [string, "ok" | "err"]> = {
+      connected: ["Gmail connected — refresh token stored", "ok"],
+      denied: ["Gmail consent was denied", "err"],
+      state_mismatch: ["OAuth state mismatch — try again", "err"],
+      no_refresh_token: ["Google returned no refresh token — remove the app at myaccount.google.com/permissions and retry", "err"],
+      error: [`Gmail OAuth failed: ${new URLSearchParams(window.location.search).get("reason") ?? ""}`, "err"],
+    };
+    if (msg[q]) toast(...msg[q]);
+    window.history.replaceState(null, "", "/settings");
+  }, []);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!settings) return;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const snippet = useMemo(() => portfolioSnippet(data?.status.appBaseUrl || origin), [data?.status.appBaseUrl, origin]);
+
+  if (!data || !form)
+    return (
+      <div className={cn("mx-auto max-w-5xl px-5 py-6 text-sm", error ? "text-rose-300" : "text-dim")}>
+        {error ? `Could not load settings: ${error}` : "Loading settings…"}
+      </div>
+    );
+  const st = data.status;
+  const num = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: Number(e.target.value) });
+  const str = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+
+  async function save(extra: Record<string, unknown> = {}) {
+    if (!form || !data) return;
+    // Send only what changed, so a stale copy can never revert a setting changed elsewhere.
+    const base = toForm(data.settings);
+    const changes = Object.fromEntries(
+      (Object.keys(form) as (keyof Form)[]).filter((k) => form[k] !== base[k]).map((k) => [k, form[k]]),
+    );
+    if (!Object.keys(changes).length && !Object.keys(extra).length) {
+      setDirty(false);
+      return toast("Nothing to save", "info");
+    }
     setSaving(true);
-    setSavedBanner(null);
     try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSettings(data.settings);
-        setKpis(data.kpis);
-        setSavedBanner('System settings saved and applied across OutreachOS.');
-      }
+      const r = await api<SettingsResponse>("/api/settings", { method: "PUT", json: { ...changes, ...extra } });
+      setDirty(false);
+      setData(r);
+      toast("Settings saved");
+      broadcastRefresh();
+    } catch (e) {
+      toast((e as Error).message, "err");
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleTestWebhook = async () => {
-    if (!testLeadId) return;
-    setWebhookResult(null);
-    const res = await fetch('/api/track/portfolio', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ref: testLeadId,
-        path: testPath,
-        durationSec: testDuration,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setWebhookResult(
-        `200 OK — Logged visit to ${data.path} (${data.durationSec}s) for lead ${data.leadId.slice(
-          0,
-          8
-        )}... Stage: ${data.stage}`
-      );
-      loadSettings();
-    } else {
-      setWebhookResult(`Error: ${data.error}`);
-    }
-  };
-
-  const appOrigin =
-    typeof window !== 'undefined' ? window.location.origin : 'https://outreach-os.vercel.app';
-
-  const portfolioSnippetCode = `'use client';
-
-import { useEffect, useRef } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
-
-const OUTREACH_OS_WEBHOOK = '${appOrigin}/api/track/portfolio';
-
-export function PortfolioTracker() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const enteredAtRef = useRef<number>(Date.now());
-
-  useEffect(() => {
-    // 1. Capture ?ref={{lead_uuid}} from incoming cold email link & persist in sessionStorage
-    const urlRef = searchParams?.get('ref');
-    if (urlRef) {
-      sessionStorage.setItem('outreach_os_ref', urlRef);
-    }
-
-    const activeRef = urlRef || sessionStorage.getItem('outreach_os_ref');
-    if (!activeRef) return;
-
-    enteredAtRef.current = Date.now();
-
-    // 2. Fire immediate pageview beacon
-    fetch(OUTREACH_OS_WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ref: activeRef,
-        path: pathname || '/',
-        durationSec: 5,
-        referrer: document.referrer || null,
-      }),
-      keepalive: true,
-    }).catch(() => {});
-
-    // 3. Log exact dwell duration when recruiter navigates away or closes tab
-    const sendDwellDuration = () => {
-      const durationSec = Math.round((Date.now() - enteredAtRef.current) / 1000);
-      if (durationSec < 2) return;
-      const payload = JSON.stringify({
-        ref: activeRef,
-        path: pathname || '/',
-        durationSec,
-      });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(OUTREACH_OS_WEBHOOK, payload);
-      }
-    };
-
-    window.addEventListener('pagehide', sendDwellDuration);
-    return () => {
-      sendDwellDuration();
-      window.removeEventListener('pagehide', sendDwellDuration);
-    };
-  }, [pathname, searchParams]);
-
-  return null;
-}`;
-
-  const handleCopySnippet = () => {
-    navigator.clipboard.writeText(portfolioSnippetCode);
-    setCopiedSnippet(true);
-    setTimeout(() => setCopiedSnippet(false), 2500);
-  };
+  }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#09090B]">
-      <CommandHeader kpis={kpis} onRefreshData={loadSettings} />
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 space-y-6">
-        {/* Top Page Title */}
-        <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5">
-          <div className="flex items-center gap-2">
-            <Settings className="h-5 w-5 text-emerald-400" />
-            <h1 className="text-base font-bold uppercase tracking-wider text-[#FAFAFA]">
-              System Settings, Deliverability Guardrails & Portfolio Telemetry
-            </h1>
-          </div>
-          <p className="mt-1 text-xs text-zinc-400">
-            Configure Gmail OAuth2 / Resend dispatch engines, daily volume caps, randomized human jitter, and copy the &lt;PortfolioTracker /&gt; snippet for sumandebnath.houseofnamus.com.
-          </p>
+    <div className="mx-auto max-w-5xl space-y-4 px-5 py-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">System Settings</h1>
+          <p className="mt-1 text-sm text-dim">Deliverability guardrails, sending identity, provider and portfolio telemetry.</p>
         </div>
+        <Button variant="primary" onClick={() => save()} loading={saving} disabled={!dirty}>
+          Save settings
+        </Button>
+      </div>
 
-        {savedBanner && (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3.5 font-mono text-xs text-emerald-300">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>{savedBanner}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* LEFT 2 COLUMNS: System Settings Form */}
-          <form
-            onSubmit={handleSave}
-            className="lg:col-span-2 rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-5"
-          >
-            <div className="flex items-center justify-between border-b border-[#27272A] pb-3">
-              <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-[#FAFAFA]">
-                1. Outbound Engine & Deliverability Guardrails
-              </h2>
-              <button
-                type="submit"
-                disabled={saving || !settings}
-                className="flex items-center gap-1.5 rounded bg-emerald-500 px-4 py-1.5 text-xs font-bold text-[#09090B] hover:bg-emerald-400 disabled:opacity-50"
-              >
-                <Save className="h-3.5 w-3.5" />
-                <span>{saving ? 'Saving...' : 'Save Configuration'}</span>
-              </button>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Section title="Execution & provider">
+          <div className="grid gap-3">
+            <div>
+              <Label>Execution mode</Label>
+              <Select value={form.execution_mode} onChange={str("execution_mode")}>
+                <option value="APPROVAL_GATE">APPROVAL GATE — human 1-click batch approval</option>
+                <option value="AUTO_PILOT">AUTO-PILOT — fully autonomous in business hours</option>
+              </Select>
             </div>
+            <div>
+              <Label>Send provider</Label>
+              <Select value={form.send_provider} onChange={str("send_provider")}>
+                <option value="GMAIL">GMAIL — OAuth2, primary-inbox placement, same-thread replies</option>
+                <option value="RESEND">RESEND — custom-domain sender</option>
+              </Select>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Daily cap</Label>
+                <Input type="number" value={form.daily_send_limit} onChange={num("daily_send_limit")} />
+              </div>
+              <div>
+                <Label>Min jitter (m)</Label>
+                <Input type="number" min={1} value={form.min_delay_minutes} onChange={num("min_delay_minutes")} />
+              </div>
+              <div>
+                <Label>Max jitter (m)</Label>
+                <Input type="number" min={1} value={form.max_delay_minutes} onChange={num("max_delay_minutes")} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Archive after T4 (bd)</Label>
+                <Input type="number" value={form.archive_after_business_days} onChange={num("archive_after_business_days")} />
+              </div>
+              <div>
+                <Label>Nurture re-engage (days)</Label>
+                <Input type="number" value={form.reengage_after_days} onChange={num("reengage_after_days")} />
+              </div>
+            </div>
+          </div>
+        </Section>
 
-            {settings && (
-              <div className="space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Primary Email Dispatch Engine
-                    </label>
-                    <select
-                      value={settings.send_provider}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          send_provider: e.target.value as SendProvider,
-                        })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="GMAIL">
-                        GMAIL API (OAuth2 + RFC 2822 Same-Thread Chaining)
-                      </option>
-                      <option value="RESEND">
-                        RESEND API (Custom Domain Transactional Engine)
-                      </option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Global Autonomy Mode
-                    </label>
-                    <select
-                      value={settings.execution_mode}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          execution_mode: e.target.value as ExecutionMode,
-                        })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="APPROVAL_GATE">
-                        APPROVAL_GATE (1-Click Morning Batch Sign-Off)
-                      </option>
-                      <option value="AUTO_PILOT">
-                        AUTO_PILOT (100% Autonomous in Recipient Business Hours)
-                      </option>
-                    </select>
-                  </div>
+        <Section title="Recipient send windows" desc="Mon–Fri only, local hour [start, end) in the recipient's timezone.">
+          <div className="space-y-3">
+            {(
+              [
+                ["india", "INDIA · Asia/Kolkata (IST)"],
+                ["us", "US · America/New_York (EST/EDT)"],
+                ["global", "GLOBAL · UTC"],
+              ] as const
+            ).map(([g, label]) => (
+              <div key={g} className="grid grid-cols-[1fr_80px_80px] items-end gap-2">
+                <div className="pb-2 text-sm text-muted">{label}</div>
+                <div>
+                  <Label>Start</Label>
+                  <Input type="number" min={0} max={23} value={form[`${g}_window_start`]} onChange={num(`${g}_window_start`)} />
                 </div>
-
-                {/* Daily Cap & Jitter */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Daily Send Limit (Hard Cap)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={200}
-                      value={settings.daily_send_limit}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          daily_send_limit: Number(e.target.value),
-                        })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Min Jitter Delay (Minutes)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={30}
-                      value={settings.min_delay_minutes}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          min_delay_minutes: Number(e.target.value),
-                        })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Max Jitter Delay (Minutes)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={settings.max_delay_minutes}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          max_delay_minutes: Number(e.target.value),
-                        })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Sender Identity */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[#27272A]">
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Sender Full Name
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.sender_name}
-                      onChange={(e) =>
-                        setSettings({ ...settings, sender_name: e.target.value })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Sender Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={settings.sender_email}
-                      onChange={(e) =>
-                        setSettings({ ...settings, sender_email: e.target.value })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Tracked Destination URLs */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Portfolio Base URL (`{'{{tracked_portfolio_url}}'}`)
-                    </label>
-                    <input
-                      type="url"
-                      value={settings.portfolio_base_url}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          portfolio_base_url: e.target.value,
-                        })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                      Résumé URL (`{'{{tracked_resume_url}}'}`)
-                    </label>
-                    <input
-                      type="url"
-                      value={settings.resume_url}
-                      onChange={(e) =>
-                        setSettings({ ...settings, resume_url: e.target.value })
-                      }
-                      className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Optional Gmail OAuth Refresh Token Override */}
-                <div className="pt-2 border-t border-[#27272A]">
-                  <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                    Gmail OAuth2 Refresh Token (Optional DB Override for `GMAIL_REFRESH_TOKEN`)
-                  </label>
-                  <input
-                    type="password"
-                    value={settings.gmail_refresh_token || ''}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        gmail_refresh_token: e.target.value || null,
-                      })
-                    }
-                    placeholder="1//04... (Leave blank to use GMAIL_REFRESH_TOKEN from .env.local)"
-                    className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                  />
+                <div>
+                  <Label>End</Label>
+                  <Input type="number" min={1} max={24} value={form[`${g}_window_end`]} onChange={num(`${g}_window_end`)} />
                 </div>
               </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Sender identity & destinations">
+          <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Sender name</Label>
+                <Input value={form.sender_name} onChange={str("sender_name")} />
+              </div>
+              <div>
+                <Label>Sender email</Label>
+                <Input value={form.sender_email} onChange={str("sender_email")} />
+              </div>
+            </div>
+            <div>
+              <Label>Portfolio base URL</Label>
+              <Input value={form.portfolio_base_url} onChange={str("portfolio_base_url")} />
+            </div>
+            <div>
+              <Label>Résumé URL</Label>
+              <Input value={form.resume_url} onChange={str("resume_url")} />
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Connections & environment">
+          <StatusRow ok={st.gmailConnected} label="Gmail API" detail={st.gmailConnected ? `token from ${st.gmailTokenSource}` : st.googleClientConfigured ? "not authorised" : "client id/secret missing"} />
+          <StatusRow ok={st.resendConfigured} label="Resend API" detail={st.resendConfigured ? "ok" : "optional"} />
+          <StatusRow ok={st.cronSecretSet} label="CRON_SECRET" />
+          <StatusRow ok={st.trackingSecretSet} label="TRACKING_SECRET" detail={st.trackingSecretSet ? "ok" : "falling back"} />
+          <StatusRow ok={st.dashboardAuth} label="Dashboard password" detail={st.dashboardAuth ? "ok" : "OPEN — set DASHBOARD_PASSWORD"} />
+          <StatusRow ok={!st.appBaseUrl.includes("localhost")} label="APP_BASE_URL" detail={st.appBaseUrl} />
+          <div className="mt-4 flex gap-2">
+            {st.googleClientConfigured ? (
+              <a
+                href="/api/auth/google/start"
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
+                  st.gmailConnected ? "border-line bg-card text-fg hover:bg-raised" : "border-fg bg-fg text-bg hover:bg-zinc-200",
+                )}
+              >
+                <Link2 className="h-3.5 w-3.5" /> {st.gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
+              </a>
+            ) : (
+              <Button size="sm" disabled title="Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first">
+                <Link2 className="h-3.5 w-3.5" /> Connect Gmail
+              </Button>
             )}
-          </form>
-
-          {/* RIGHT COLUMN: Environment Diagnostics & Timezone Rules */}
-          <div className="space-y-4">
-            <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-3">
-              <div className="flex items-center gap-2 border-b border-[#27272A] pb-2.5">
-                <KeyRound className="h-4 w-4 text-emerald-400" />
-                <h3 className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                  Environment & API Diagnostics
-                </h3>
-              </div>
-
-              <div className="space-y-2 font-mono text-xs">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Database Engine:</span>
-                  <span
-                    className={
-                      diagnostics?.supabaseConfigured
-                        ? 'text-emerald-400 font-bold'
-                        : 'text-amber-300 font-bold'
-                    }
-                  >
-                    {diagnostics?.supabaseConfigured ? 'SUPABASE' : 'LOCAL JSON (.data)'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">GOOGLE_CLIENT_ID:</span>
-                  <span
-                    className={
-                      diagnostics?.googleClientIdSet ? 'text-emerald-400' : 'text-zinc-500'
-                    }
-                  >
-                    {diagnostics?.googleClientIdSet ? 'Configured' : 'Not Set'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">GMAIL_REFRESH_TOKEN:</span>
-                  <span
-                    className={
-                      diagnostics?.gmailRefreshTokenSet ? 'text-emerald-400' : 'text-zinc-500'
-                    }
-                  >
-                    {diagnostics?.gmailRefreshTokenSet ? 'Configured' : 'Not Set'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">RESEND_API_KEY:</span>
-                  <span
-                    className={
-                      diagnostics?.resendApiKeySet ? 'text-emerald-400' : 'text-zinc-500'
-                    }
-                  >
-                    {diagnostics?.resendApiKeySet ? 'Configured' : 'Not Set'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">CRON_SECRET:</span>
-                  <span
-                    className={
-                      diagnostics?.cronSecretSet ? 'text-emerald-400' : 'text-zinc-500'
-                    }
-                  >
-                    {diagnostics?.cronSecretSet ? 'Configured' : 'Optional'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-3">
-              <div className="flex items-center gap-2 border-b border-[#27272A] pb-2.5">
-                <ShieldCheck className="h-4 w-4 text-sky-400" />
-                <h3 className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                  Recipient Timezone Enforcement
-                </h3>
-              </div>
-              <ul className="space-y-2 font-mono text-[11px] text-zinc-400">
-                <li>
-                  <strong className="text-orange-300">INDIA (IST):</strong> Mon–Fri · 10:00 AM – 6:00 PM Asia/Kolkata
-                </li>
-                <li>
-                  <strong className="text-blue-300">US (EST):</strong> Mon–Fri · 9:00 AM – 5:00 PM America/New_York
-                </li>
-                <li>
-                  <strong className="text-zinc-200">GLOBAL (UTC):</strong> Mon–Fri · 9:00 AM – 6:00 PM UTC
-                </li>
-              </ul>
-            </div>
+            {st.gmailTokenSource === "database" && (
+              <Button size="sm" variant="danger" onClick={() => confirm("Remove the stored Gmail refresh token?") && save({ disconnect_gmail: true })}>
+                <Unplug className="h-3.5 w-3.5" /> Disconnect
+              </Button>
+            )}
           </div>
-        </div>
-
-        {/* Cross-Origin Portfolio Telemetry Snippet & Live Webhook Tester */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#27272A] pb-3">
-              <div className="flex items-center gap-2">
-                <Code2 className="h-4 w-4 text-amber-400" />
-                <h2 className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                  2. Portfolio Telemetry Client Component (`sumandebnath.houseofnamus.com`)
-                </h2>
-              </div>
-
-              <button
-                onClick={handleCopySnippet}
-                className="flex items-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-300 hover:bg-emerald-500/20"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                <span>{copiedSnippet ? 'Copied to Clipboard!' : 'Copy Next.js Snippet'}</span>
-              </button>
-            </div>
-
-            <p className="text-xs text-zinc-400">
-              Mount &lt;PortfolioTracker /&gt; inside your portfolio&apos;s root app/layout.tsx. When a recruiter clicks https://sumandebnath.houseofnamus.com/?ref={'{{lead_uuid}}'} from your email, it logs every visited page and dwell duration back to OutreachOS in real time.
+          {st.appBaseUrl.includes("localhost") && (
+            <p className="mt-3 text-xs text-amber-300">
+              Tracking pixels and click links point at localhost — set APP_BASE_URL to your public deployment before sending.
             </p>
+          )}
+        </Section>
+      </div>
 
-            <pre className="overflow-x-auto rounded border border-[#27272A] bg-[#09090B] p-4 font-mono text-[11px] leading-relaxed text-zinc-300 max-h-80">
-              {portfolioSnippetCode}
-            </pre>
-          </div>
-
-          {/* Live CORS Webhook Simulator */}
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-4">
-            <div className="flex items-center gap-2 border-b border-[#27272A] pb-2.5">
-              <Terminal className="h-4 w-4 text-emerald-400" />
-              <h3 className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                Test `/api/track/portfolio` Webhook
-              </h3>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                  Target Lead (`?ref=lead_uuid`)
-                </label>
-                <select
-                  value={testLeadId}
-                  onChange={(e) => setTestLeadId(e.target.value)}
-                  className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-[#FAFAFA]"
-                >
-                  {leads.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.company_name} — {l.first_name} ({l.funnel_stage})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                  Simulated Portfolio Page Path
-                </label>
-                <input
-                  type="text"
-                  value={testPath}
-                  onChange={(e) => setTestPath(e.target.value)}
-                  placeholder="/agents/migi"
-                  className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                  Simulated Dwell Duration (Seconds)
-                </label>
-                <input
-                  type="number"
-                  value={testDuration}
-                  onChange={(e) => setTestDuration(Number(e.target.value))}
-                  className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 font-mono text-[#FAFAFA]"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleTestWebhook}
-                className="flex w-full items-center justify-center gap-1.5 rounded bg-[#FAFAFA] py-2 text-xs font-bold text-[#09090B] hover:bg-zinc-200"
-              >
-                <Play className="h-3.5 w-3.5" />
-                <span>Fire Live Portfolio Webhook</span>
-              </button>
-
-              {webhookResult && (
-                <div className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2.5 font-mono text-[11px] text-emerald-300">
-                  {webhookResult}
-                </div>
-              )}
-            </div>
-          </div>
+      <Section
+        title="Portfolio telemetry snippet"
+        desc={`Paste into the portfolio repo as components/PortfolioTracker.tsx and mount <PortfolioTracker /> in app/layout.tsx. Allowed origins: ${st.portfolioOrigins.join(", ")}`}
+      >
+        <div className="relative">
+          <Button
+            size="sm"
+            className="absolute top-2 right-2"
+            onClick={async () => {
+              await navigator.clipboard.writeText(snippet);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {copied ? "Copied" : "Copy"}
+          </Button>
+          <pre className="max-h-[420px] overflow-auto rounded-md border border-line bg-bg p-4 font-mono text-[11.5px] leading-relaxed text-muted">{snippet}</pre>
         </div>
-      </main>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-dim">
+          <Badge>POST {st.appBaseUrl}/api/track/portfolio</Badge>
+          <Badge>{"{ ref, path, type: view|leave, durationSec }"}</Badge>
+        </div>
+      </Section>
     </div>
   );
 }

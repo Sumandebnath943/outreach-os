@@ -1,0 +1,27 @@
+name: OutreachOS queue worker
+
+# Every 10 minutes, Monday–Friday (UTC). Covers the IST, EST and UTC send windows;
+# the worker itself enforces each recipient's local business hours.
+on:
+  schedule:
+    - cron: "*/10 * * * 1-5"
+  workflow_dispatch: {}
+
+concurrency:
+  group: outreach-os-queue
+  cancel-in-progress: false
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger /api/cron/process-queue
+        env:
+          OUTREACH_OS_URL: ${{ secrets.OUTREACH_OS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 90 \
+            "${OUTREACH_OS_URL%/}/api/cron/process-queue"

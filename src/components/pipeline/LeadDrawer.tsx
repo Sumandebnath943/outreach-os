@@ -1,0 +1,538 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Calendar,
+  ExternalLink,
+  Eye,
+  Globe,
+  Link2,
+  Mail,
+  MessageSquareReply,
+  MousePointerClick,
+  Pause,
+  Play,
+  Trash2,
+  X,
+} from "lucide-react";
+import { api, broadcastRefresh, usePoll } from "@/lib/client";
+import { GEO_LABEL, GEO_TZ, STAGE_META, touchLabel } from "@/lib/meta";
+import { localTimeLabel } from "@/lib/schedule";
+import {
+  CLOSED_SUB_STAGES,
+  FUNNEL_STAGES,
+  GEO_REGIONS,
+  INTERVIEW_SUB_STAGES,
+  ROLE_TRACKS,
+  type EmailLog,
+  type FunnelStage,
+  type Lead,
+  type TrackingEvent,
+} from "@/lib/types";
+import { cn, fullName, relTime } from "@/lib/utils";
+import { Badge, Button, Input, Label, Select, Textarea, toast } from "../ui";
+
+interface Dossier {
+  lead: Lead;
+  emails: EmailLog[];
+  events: TrackingEvent[];
+}
+
+const fmt = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+const BOT_REASON: Record<string, string> = {
+  before_send_recorded: "fired during send",
+  missing_user_agent: "no user agent",
+  scanner_user_agent: "security scanner",
+  within_grace_period: "within 60s of delivery",
+};
+
+function describe(ev: TrackingEvent, logs: EmailLog[]): { icon: React.ReactNode; text: React.ReactNode; tone: string } {
+  const m = ev.metadata as Record<string, string | number | boolean | null | undefined>;
+  const log = logs.find((l) => l.id === ev.email_log_id);
+  const t = log ? ` (${touchLabel(log.touch_number, log.branch_variant)})` : "";
+  const bot = m.bot ? (
+    <span className="text-dim"> · ignored, likely automated ({BOT_REASON[String(m.botReason)] ?? String(m.botReason)})</span>
+  ) : null;
+  switch (ev.event_type) {
+    case "EMAIL_OPEN":
+      return {
+        icon: <Eye className="h-3 w-3" />,
+        text: (
+          <>
+            Opened email{t}
+            {bot}
+          </>
+        ),
+        tone: bot ? "text-dim" : "text-fg",
+      };
+    case "LINK_CLICK":
+      return {
+        icon: <MousePointerClick className="h-3 w-3" />,
+        text: (
+          <>
+            Clicked <span className="font-mono text-amber-200">{String(m.path ?? m.url ?? "link")}</span>
+            {t}
+            {bot}
+          </>
+        ),
+        tone: bot ? "text-dim" : "text-amber-300",
+      };
+    case "PORTFOLIO_VIEW":
+      return {
+        icon: <Globe className="h-3 w-3" />,
+        text: (
+          <>
+            Viewed <span className="font-mono text-amber-200">{String(m.path ?? "/")}</span>
+            {m.durationSec ? <> for {Number(m.durationSec)}s</> : null}
+          </>
+        ),
+        tone: "text-amber-300",
+      };
+    case "REPLY_RECEIVED":
+      return {
+        icon: <MessageSquareReply className="h-3 w-3" />,
+        text: (
+          <>
+            Replied <Badge tone="emerald">{String(m.sentiment ?? "")}</Badge>
+            <div className="mt-1 text-muted italic">“{String(m.snippet ?? "")}”</div>
+          </>
+        ),
+        tone: "text-emerald-300",
+      };
+    default:
+      return {
+        icon: <ArrowRight className="h-3 w-3" />,
+        text: (
+          <>
+            {m.from ? STAGE_META[m.from as FunnelStage]?.label ?? String(m.from) : "Created"} →{" "}
+            {STAGE_META[m.to as FunnelStage]?.label ?? String(m.to)}
+            {m.sub_stage ? ` · ${m.sub_stage}` : ""}
+            <span className="text-dim"> · {String(m.reason ?? "")}</span>
+          </>
+        ),
+        tone: "text-muted",
+      };
+  }
+}
+
+export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+  const { data, reload } = usePoll<Dossier>(`/api/leads/${leadId}`, 15000);
+  const [tab, setTab] = useState<"thread" | "timeline" | "details">("timeline");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [form, setFormState] = useState<Partial<Lead>>({});
+  const [dirty, setDirty] = useState(false);
+  const setForm = (next: Partial<Lead>) => {
+    setFormState(next);
+    setDirty(true);
+  };
+
+  // Background polls (every open/click bumps updated_at) must never wipe unsaved edits.
+  useEffect(() => {
+    if (data?.lead && !dirty) setFormState(data.lead);
+  }, [data?.lead, dirty]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function patch(body: Record<string, unknown>, label: string, savesForm = false) {
+    setBusy(label);
+    try {
+      await api("/api/leads", { method: "PATCH", json: { id: leadId, ...body } });
+      toast(label);
+      if (savesForm) setDirty(false);
+      await reload();
+      broadcastRefresh();
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove() {
+    if (!data || !confirm(`Delete ${data.lead.email} and all its history? This cannot be undone.`)) return;
+    try {
+      await api(`/api/leads?id=${leadId}`, { method: "DELETE" });
+      toast("Lead deleted");
+      broadcastRefresh();
+      onClose();
+    } catch (e) {
+      toast((e as Error).message, "err");
+    }
+  }
+
+  const lead = data?.lead;
+  const events = data?.events ?? [];
+  const emails = data?.emails ?? [];
+  const subOptions =
+    lead?.funnel_stage === "INTERVIEWING"
+      ? INTERVIEW_SUB_STAGES
+      : lead?.funnel_stage === "CLOSED_ARCHIVE"
+        ? CLOSED_SUB_STAGES
+        : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onMouseDown={onClose}>
+      <aside
+        className="animate-slide-in flex h-full w-full max-w-[640px] flex-col border-l border-line bg-bg shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {!lead ? (
+          <div className="p-6 text-sm text-dim">Loading dossier…</div>
+        ) : (
+          <>
+            {/* header */}
+            <div className="border-b border-line px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-dim uppercase">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", STAGE_META[lead.funnel_stage].dot)} />
+                    {STAGE_META[lead.funnel_stage].n} · {STAGE_META[lead.funnel_stage].label}
+                  </div>
+                  <h2 className="mt-1 truncate text-lg font-semibold tracking-tight">{lead.company_name}</h2>
+                  <div className="text-sm text-muted">
+                    {fullName(lead)}
+                    {lead.job_title && <span className="text-dim"> · {lead.job_title}</span>}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-dim">
+                    <a href={`mailto:${lead.email}`} className="flex items-center gap-1 hover:text-fg">
+                      <Mail className="h-3 w-3" />
+                      {lead.email}
+                    </a>
+                    {lead.linkedin_url && (
+                      <a href={lead.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-fg">
+                        <Link2 className="h-3 w-3" /> LinkedIn
+                      </a>
+                    )}
+                    {lead.company_website && (
+                      <a href={lead.company_website} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-fg">
+                        <ExternalLink className="h-3 w-3" /> Website
+                      </a>
+                    )}
+                    <span className="font-mono">
+                      {GEO_LABEL[lead.geo_region]} · {localTimeLabel(lead.geo_region)}
+                    </span>
+                  </div>
+                </div>
+                <button onClick={onClose} className="text-dim hover:text-fg" aria-label="Close dossier">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* telemetry strip */}
+              <div className="mt-4 grid grid-cols-4 gap-px overflow-hidden rounded-md border border-line bg-line font-mono">
+                {[
+                  ["OPENS", lead.open_count, lead.open_count >= 2],
+                  ["CLICKS", lead.click_count, lead.click_count > 0],
+                  ["PAGE VIEWS", lead.portfolio_visit_count, lead.portfolio_visit_count > 0],
+                  ["TOUCH", `${lead.current_touch}/4`, false],
+                ].map(([k, v, hot]) => (
+                  <div key={String(k)} className="bg-card px-3 py-2">
+                    <div className="text-[9px] tracking-widest text-dim">{k}</div>
+                    <div className={cn("text-base tabular", hot ? "text-amber-300" : "text-fg")}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {!!lead.portfolio_pages_viewed?.length && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {lead.portfolio_pages_viewed.map((p) => (
+                    <Badge key={p} tone="amber">
+                      {p}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {/* stage + sequence control */}
+              <section className="grid grid-cols-2 gap-4 border-b border-line px-6 py-4">
+                <div>
+                  <Label>Funnel stage</Label>
+                  <Select
+                    value={lead.funnel_stage}
+                    disabled={!!busy}
+                    onChange={(e) => patch({ funnel_stage: e.target.value }, `Moved to ${STAGE_META[e.target.value as FunnelStage].label}`)}
+                  >
+                    {FUNNEL_STAGES.map((s) => (
+                      <option key={s} value={s}>
+                        {STAGE_META[s].n} · {STAGE_META[s].label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label>Sub-stage</Label>
+                  {subOptions ? (
+                    <Select value={lead.sub_stage ?? ""} onChange={(e) => patch({ sub_stage: e.target.value }, "Sub-stage updated")}>
+                      <option value="">—</option>
+                      {subOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {s.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      defaultValue={lead.sub_stage ?? ""}
+                      key={lead.sub_stage ?? ""}
+                      placeholder="—"
+                      onBlur={(e) => e.target.value !== (lead.sub_stage ?? "") && patch({ sub_stage: e.target.value }, "Sub-stage updated")}
+                    />
+                  )}
+                </div>
+
+                <div className="col-span-2 rounded-md border border-line bg-card p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", lead.sequence_active ? "bg-emerald-400" : "bg-zinc-600")} />
+                        <span className="font-medium">{lead.sequence_active ? "Sequence active" : "Sequence stopped"}</span>
+                        <Badge tone={lead.approval_status === "APPROVED" ? "emerald" : lead.approval_status === "PAUSED" ? "rose" : "neutral"}>
+                          {lead.approval_status}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 font-mono text-[11px] text-dim">
+                        {lead.sequence_active && lead.next_touch_due_at ? (
+                          <>
+                            <Calendar className="mr-1 inline h-3 w-3" />
+                            {lead.current_touch >= 4 ? "auto-archive" : `T${lead.current_touch + 1}`} due {fmt(lead.next_touch_due_at)} (
+                            {relTime(lead.next_touch_due_at)}) · window {GEO_TZ[lead.geo_region]}
+                          </>
+                        ) : lead.reengage_at ? (
+                          <>re-engage {fmt(lead.reengage_at)}</>
+                        ) : (
+                          "no automated touches scheduled"
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      {lead.sequence_active && lead.approval_status !== "PAUSED" && (
+                        <Button size="sm" onClick={() => patch({ approval_status: "PAUSED" }, "Sequence paused")} loading={busy === "Sequence paused"}>
+                          <Pause className="h-3 w-3" /> Pause
+                        </Button>
+                      )}
+                      {lead.sequence_active && lead.approval_status === "PAUSED" && (
+                        <Button size="sm" onClick={() => patch({ approval_status: "PENDING" }, "Sequence unpaused")}>
+                          <Play className="h-3 w-3" /> Unpause
+                        </Button>
+                      )}
+                      {!lead.sequence_active && lead.current_touch < 4 && (
+                        <Button size="sm" variant="success" onClick={() => patch({ action: "resume_sequence" }, "Sequence resumed")}>
+                          <Play className="h-3 w-3" /> Resume sequence
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {lead.reply_snippet && (
+                  <div className="col-span-2 rounded-md border border-emerald-500/25 bg-emerald-500/5 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-medium text-emerald-300">
+                        <MessageSquareReply className="h-3.5 w-3.5" /> Reply {relTime(lead.replied_at)}
+                        {lead.reply_sentiment && <Badge tone="emerald">{lead.reply_sentiment}</Badge>}
+                      </div>
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-fg/90">“{lead.reply_snippet}”</p>
+                    {lead.funnel_stage === "REPLIED_TRIAGE" && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="success" onClick={() => patch({ funnel_stage: "INTERVIEWING", sub_stage: "HR_SCREEN" }, "Promoted to Interviewing")}>
+                          Call booked → Interviewing
+                        </Button>
+                        <Button size="sm" onClick={() => patch({ funnel_stage: "NURTURE_LATER" }, "Moved to Nurture")}>
+                          Not now → Nurture
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => patch({ funnel_stage: "CLOSED_ARCHIVE", sub_stage: "REJECTED" }, "Closed as rejected")}>
+                          Rejected
+                        </Button>
+                        {lead.current_touch < 4 && (
+                          <Button size="sm" variant="ghost" onClick={() => patch({ action: "resume_sequence" }, "Sequence resumed")}>
+                            Auto-reply? Resume
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* tabs */}
+              <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-bg px-6 pt-2">
+                {(
+                  [
+                    ["timeline", `Telemetry · ${events.length}`],
+                    ["thread", `Thread · ${emails.filter((e) => e.status !== "QUEUED_FOR_APPROVAL").length}`],
+                    ["details", "Details & Notes"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setTab(k)}
+                    className={cn(
+                      "-mb-px border-b px-3 py-2 text-xs transition-colors",
+                      tab === k ? "border-fg text-fg" : "border-transparent text-dim hover:text-fg",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-6 py-4">
+                {tab === "timeline" && (
+                  <ol className="relative space-y-3 border-l border-line pl-4">
+                    {events.length === 0 && <li className="text-sm text-dim">No telemetry yet.</li>}
+                    {events.map((ev) => {
+                      const d = describe(ev, emails);
+                      return (
+                        <li key={ev.id} className="relative">
+                          <span className={cn("absolute top-1 -left-[23px] flex h-3.5 w-3.5 items-center justify-center rounded-full border border-line bg-card", d.tone)}>
+                            {d.icon}
+                          </span>
+                          <div className={cn("text-[13px]", d.tone)}>{d.text}</div>
+                          <div className="font-mono text-[10px] text-dim">
+                            {fmt(ev.created_at)} · {relTime(ev.created_at)}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+
+                {tab === "thread" && (
+                  <div className="space-y-3">
+                    {emails.length === 0 && <div className="text-sm text-dim">Nothing sent yet.</div>}
+                    {emails.map((m) => (
+                      <article key={m.id} className="rounded-md border border-line bg-card">
+                        <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-medium">{m.subject}</div>
+                            <div className="font-mono text-[10px] text-dim">
+                              {touchLabel(m.touch_number, m.branch_variant)} · {m.provider} · {fmt(m.sent_at)}
+                            </div>
+                          </div>
+                          <Badge
+                            tone={m.status === "SENT" ? "emerald" : m.status === "QUEUED_FOR_APPROVAL" ? "amber" : "rose"}
+                          >
+                            {m.status === "QUEUED_FOR_APPROVAL" ? "DRAFT" : m.status}
+                          </Badge>
+                        </header>
+                        {m.error && <div className="border-b border-line px-3 py-2 font-mono text-[11px] text-rose-300">{m.error}</div>}
+                        {m.status === "QUEUED_FOR_APPROVAL" ? (
+                          <pre className="px-3 py-3 font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-muted">{m.body_html}</pre>
+                        ) : m.body_html ? (
+                          <div className="email-body px-3 py-3 text-[13px] leading-relaxed text-muted" dangerouslySetInnerHTML={{ __html: m.body_html }} />
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {tab === "details" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {(
+                      [
+                        ["first_name", "First name"],
+                        ["last_name", "Last name"],
+                        ["company_name", "Company"],
+                        ["job_title", "Their title"],
+                        ["target_role_opening", "Target role opening"],
+                        ["linkedin_url", "LinkedIn URL"],
+                        ["company_website", "Company website"],
+                      ] as const
+                    ).map(([k, label]) => (
+                      <div key={k} className={k === "target_role_opening" ? "col-span-2" : ""}>
+                        <Label>{label}</Label>
+                        <Input value={(form[k] as string) ?? ""} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+                      </div>
+                    ))}
+                    <div>
+                      <Label>Geo region</Label>
+                      <Select value={form.geo_region} onChange={(e) => setForm({ ...form, geo_region: e.target.value as Lead["geo_region"] })}>
+                        {GEO_REGIONS.map((g) => (
+                          <option key={g}>{g}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Role track</Label>
+                      <Select value={form.role_track} onChange={(e) => setForm({ ...form, role_track: e.target.value as Lead["role_track"] })}>
+                        {ROLE_TRACKS.map((g) => (
+                          <option key={g}>{g}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label hint="1 sentence · own paragraph above the pitch">Custom icebreaker</Label>
+                      <Textarea rows={2} value={form.custom_icebreaker ?? ""} onChange={(e) => setForm({ ...form, custom_icebreaker: e.target.value })} />
+                    </div>
+                    <div className="col-span-2">
+                      <Label hint="interview prep, comp, notice-period notes">Notes</Label>
+                      <Textarea rows={6} value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                    </div>
+                    {lead.funnel_stage === "NURTURE_LATER" && (
+                      <div className="col-span-2">
+                        <Label>Re-engage at</Label>
+                        <Input
+                          type="date"
+                          value={form.reengage_at ? form.reengage_at.slice(0, 10) : ""}
+                          onChange={(e) => setForm({ ...form, reengage_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                        />
+                      </div>
+                    )}
+                    <div className="col-span-2 flex items-center justify-between pt-2">
+                      <Button variant="danger" size="sm" onClick={remove}>
+                        <Trash2 className="h-3 w-3" /> Delete lead
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        {dirty && (
+                          <Button size="sm" variant="ghost" onClick={() => { setDirty(false); if (data?.lead) setFormState(data.lead); }}>
+                            Discard
+                          </Button>
+                        )}
+                      <Button
+                        variant="primary"
+                        disabled={!dirty}
+                        loading={busy === "Details saved"}
+                        onClick={() =>
+                          patch(
+                            {
+                              first_name: form.first_name,
+                              last_name: form.last_name,
+                              company_name: form.company_name,
+                              job_title: form.job_title,
+                              target_role_opening: form.target_role_opening,
+                              linkedin_url: form.linkedin_url,
+                              company_website: form.company_website,
+                              geo_region: form.geo_region,
+                              role_track: form.role_track,
+                              custom_icebreaker: form.custom_icebreaker,
+                              notes: form.notes,
+                              ...(lead.funnel_stage === "NURTURE_LATER" ? { reengage_at: form.reengage_at } : {}),
+                            },
+                            "Details saved",
+                            true,
+                          )
+                        }
+                      >
+                        Save details
+                      </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </aside>
+    </div>
+  );
+}

@@ -1,147 +1,76 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  createLead,
-  getGlobalKPIs,
-  getLeads,
-  inferGeoRegion,
-  inferRoleTrack,
-} from '@/lib/db';
-import { GeoRegion, Lead, RoleTrack } from '@/types/outreach';
+import { db, must } from "@/lib/server/db";
+import { fail, ok, readJson, route } from "@/lib/server/http";
+import { normalizeLead, type NormalizeOverrides } from "@/lib/ingest";
+import type { ImportResponse, ImportRowResult as RowResult } from "@/lib/types";
 
-interface RawCsvRow {
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  company_name?: string;
-  job_title?: string;
-  linkedin_url?: string;
-  company_website?: string;
-  target_role_opening?: string;
-  geo_region?: string;
-  role_track?: string;
-  custom_icebreaker?: string;
-  notes?: string;
-}
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * POST /api/leads/import
+ * { rows: Array<Record<leadField, value>>, overrides?: { geo_region, role_track }, dryRun?: boolean }
+ * Rows are already header-mapped by the importer UI. Deduplicates within the file and against the
+ * database (archived addresses stay locked), then queues Touch 1 for every new lead.
+ */
+export const POST = route(async (req: Request) => {
+  const body = await readJson<{ rows?: Record<string, unknown>[]; overrides?: NormalizeOverrides; dryRun?: boolean }>(req);
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  if (!rows.length) return fail("No rows supplied");
+  if (rows.length > 5000) return fail("Import at most 5,000 rows per batch");
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const rows: RawCsvRow[] = Array.isArray(body.rows) ? body.rows : [];
-    const overrideGeo: GeoRegion | 'AUTO' = body.overrideGeo || 'AUTO';
-    const overrideTrack: RoleTrack | 'AUTO' = body.overrideTrack || 'AUTO';
+  const results: RowResult[] = [];
+  const seen = new Set<string>();
+  const overrides: NormalizeOverrides = body.overrides && typeof body.overrides === "object" ? body.overrides : {};
+  rows.forEach((raw, i) => {
+    const n = normalizeLead(raw && typeof raw === "object" ? raw : {}, overrides);
+    if (!n.ok) return results.push({ row: i + 1, status: "INVALID", error: n.error });
+    if (seen.has(n.lead.email)) return results.push({ row: i + 1, status: "DUPLICATE_IN_FILE", email: n.lead.email });
+    seen.add(n.lead.email);
+    results.push({ row: i + 1, status: "NEW", lead: n.lead });
+  });
 
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { error: 'No CSV rows provided for import.' },
-        { status: 400 }
-      );
-    }
-
-    const existingLeads = await getLeads();
-    const existingEmailSet = new Set(
-      existingLeads.map((l) => l.email.trim().toLowerCase())
-    );
-    const seenInBatch = new Set<string>();
-
-    const imported: Lead[] = [];
-    const skippedDuplicates: { email: string; company: string; reason: string }[] = [];
-    const invalidRows: { rowNumber: number; email: string; reason: string }[] = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      const rawEmail = (r.email || '').trim().toLowerCase();
-      const companyName = (r.company_name || '').trim();
-
-      if (!rawEmail || !EMAIL_REGEX.test(rawEmail)) {
-        invalidRows.push({
-          rowNumber: i + 1,
-          email: rawEmail || '(empty)',
-          reason: 'Invalid or missing email syntax',
-        });
-        continue;
-      }
-
-      if (!companyName) {
-        invalidRows.push({
-          rowNumber: i + 1,
-          email: rawEmail,
-          reason: 'Missing company_name',
-        });
-        continue;
-      }
-
-      if (existingEmailSet.has(rawEmail)) {
-        skippedDuplicates.push({
-          email: rawEmail,
-          company: companyName,
-          reason: 'Already exists in OutreachOS database (or locked in Archive)',
-        });
-        continue;
-      }
-
-      if (seenInBatch.has(rawEmail)) {
-        skippedDuplicates.push({
-          email: rawEmail,
-          company: companyName,
-          reason: 'Duplicate email within uploaded CSV file',
-        });
-        continue;
-      }
-
-      seenInBatch.add(rawEmail);
-
-      const resolvedGeo: GeoRegion =
-        overrideGeo !== 'AUTO'
-          ? overrideGeo
-          : inferGeoRegion(r.geo_region, rawEmail, r.company_website);
-
-      const resolvedTrack: RoleTrack =
-        overrideTrack !== 'AUTO'
-          ? overrideTrack
-          : inferRoleTrack(r.role_track, r.target_role_opening, r.job_title);
-
-      try {
-        const created = await createLead({
-          first_name: (r.first_name || '').trim() || 'Team',
-          last_name: r.last_name?.trim() || null,
-          email: rawEmail,
-          company_name: companyName,
-          job_title: r.job_title?.trim() || null,
-          linkedin_url: r.linkedin_url?.trim() || null,
-          company_website: r.company_website?.trim() || null,
-          target_role_opening: r.target_role_opening?.trim() || null,
-          geo_region: resolvedGeo,
-          role_track: resolvedTrack,
-          custom_icebreaker: r.custom_icebreaker?.trim() || null,
-          notes: r.notes?.trim() || null,
-        });
-        imported.push(created);
-        existingEmailSet.add(rawEmail);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Database insert error';
-        invalidRows.push({
-          rowNumber: i + 1,
-          email: rawEmail,
-          reason: msg,
-        });
-      }
-    }
-
-    const kpis = await getGlobalKPIs();
-
-    return NextResponse.json({
-      importedCount: imported.length,
-      skippedDuplicatesCount: skippedDuplicates.length,
-      invalidRowsCount: invalidRows.length,
-      imported,
-      skippedDuplicates,
-      invalidRows,
-      kpis,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Bulk CSV import failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+  const emails = [...seen];
+  const existing = new Map<string, string>();
+  for (let i = 0; i < emails.length; i += 300) {
+    const res = await db().from("leads").select("email, funnel_stage").in("email", emails.slice(i, i + 300));
+    for (const r of must(res, "dedupe lookup") as { email: string; funnel_stage: string }[]) existing.set(r.email, r.funnel_stage);
   }
-}
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status === "NEW" && existing.has(r.lead.email)) {
+      const stage = existing.get(r.lead.email)!;
+      results[i] = { row: r.row, status: "DUPLICATE_EXISTING", email: r.lead.email, stage, locked: stage === "CLOSED_ARCHIVE" };
+    }
+  }
+
+  const fresh = results.filter((r): r is Extract<RowResult, { status: "NEW" }> => r.status === "NEW");
+  let inserted = 0;
+  if (!body.dryRun && fresh.length) {
+    const due = new Date().toISOString(); // Touch 1 is due immediately; the worker enforces the send window
+    for (let i = 0; i < fresh.length; i += 500) {
+      const chunk = fresh.slice(i, i + 500).map((r) => ({ ...r.lead, next_touch_due_at: due }));
+      const res = await db().from("leads").upsert(chunk, { onConflict: "email", ignoreDuplicates: true }).select("id");
+      const ids = must(res, "insert leads") as { id: string }[];
+      inserted += ids.length;
+      if (ids.length) {
+        await db()
+          .from("tracking_events")
+          .insert(ids.map((x) => ({ lead_id: x.id, event_type: "STAGE_CHANGE", metadata: { from: null, to: "LEAD_QUEUED", reason: "csv_import" } })));
+      }
+    }
+  }
+
+  const count = (s: RowResult["status"]) => results.filter((r) => r.status === s).length;
+  return ok<ImportResponse>({
+    dryRun: Boolean(body.dryRun),
+    summary: {
+      total: rows.length,
+      new: fresh.length,
+      inserted,
+      invalid: count("INVALID"),
+      duplicateInFile: count("DUPLICATE_IN_FILE"),
+      duplicateExisting: count("DUPLICATE_EXISTING"),
+    },
+    results,
+  });
+});
