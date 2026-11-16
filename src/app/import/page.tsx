@@ -1,395 +1,273 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import Papa from 'papaparse';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Download,
-  FileSpreadsheet,
-  UploadCloud,
-} from 'lucide-react';
-import CommandHeader from '@/components/CommandHeader';
-import {
-  GEO_REGION_META,
-  GeoRegion,
-  GlobalKPIs,
-  ROLE_TRACK_META,
-  RoleTrack,
-} from '@/types/outreach';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import Papa from "papaparse";
+import { Download, FileSpreadsheet, Upload } from "lucide-react";
+import { api, broadcastRefresh } from "@/lib/client";
+import { autoMapHeaders, LEAD_FIELDS, SAMPLE_CSV, type LeadField } from "@/lib/ingest";
+import { GEO_REGIONS, ROLE_TRACKS, type ImportResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { Badge, Button, Card, Label, Select, toast } from "@/components/ui";
 
-interface NormalizedCsvRow {
-  first_name: string;
-  last_name: string;
-  email: string;
-  company_name: string;
-  job_title: string;
-  linkedin_url: string;
-  company_website: string;
-  target_role_opening: string;
-  geo_region: string;
-  role_track: string;
-  custom_icebreaker: string;
-}
+type Mapping = Record<string, LeadField | "full_name" | "">;
 
-const SAMPLE_CSV_CONTENT = `first_name,last_name,email,company_name,job_title,target_role_opening,geo_region,role_track,linkedin_url,company_website,custom_icebreaker
-Siddharth,Rao,siddharth.rao@krutrim-example.ai,Krutrim AI,VP of Marketing & Growth,Senior Brand Marketing Manager,INDIA,BRAND,https://linkedin.com/in/siddharth-rao,https://olakrutrim.com,Impressed by how Krutrim is positioning sovereign AI infrastructure for Indian enterprises.
-Claire,Bennett,claire@anthropic-example.com,Anthropic,Head of Product Marketing,AI Product Marketing Manager (AI PMM),US,AI_PMM,https://linkedin.com/in/claire-bennett,https://anthropic.com,Built my 46-agent operator OS (MIGI) and MCP-style content negotiation workflows around Claude.
-Arjun,Kapoor,arjun@cred-example.club,CRED,Head of Brand & Storytelling,Senior Brand Marketing Manager,INDIA,BRAND,https://linkedin.com/in/arjun-kapoor,https://cred.club,Long-time admirer of CRED's high-craft brand systems and category-defining GTM campaigns.
-Devon,Brooks,devon@cursor-example.com,Anysphere (Cursor),Product Lead,AI Product Manager (AI PM),US,AI_PM,https://linkedin.com/in/devon-brooks,https://cursor.com,Fine-tuned a 1.5B coding model (Qdex-1.5B) and shipped 21 AI systems solo over the last 24 months.`;
+const FIELD_OPTIONS: (LeadField | "full_name")[] = [...LEAD_FIELDS, "full_name"];
 
-function mapHeaderRow(raw: Record<string, string>): NormalizedCsvRow {
-  const getVal = (keys: string[]) => {
-    for (const k of Object.keys(raw)) {
-      const cleanKey = k.trim().toLowerCase().replace(/[\s_-]+/g, '_');
-      if (keys.includes(cleanKey) && raw[k]) {
-        return String(raw[k]).trim();
-      }
-    }
-    return '';
-  };
-
-  return {
-    first_name: getVal(['first_name', 'firstname', 'first', 'name', 'contact_name']) || 'Team',
-    last_name: getVal(['last_name', 'lastname', 'last', 'surname']),
-    email: getVal(['email', 'email_address', 'work_email', 'contact_email']).toLowerCase(),
-    company_name: getVal(['company_name', 'company', 'organization', 'account']),
-    job_title: getVal(['job_title', 'title', 'role', 'position', 'designation']),
-    linkedin_url: getVal(['linkedin_url', 'linkedin', 'person_linkedin', 'profile_url']),
-    company_website: getVal(['company_website', 'website', 'domain', 'company_url']),
-    target_role_opening: getVal([
-      'target_role_opening',
-      'target_role',
-      'open_role',
-      'opening',
-      'job_opening',
-    ]),
-    geo_region: getVal(['geo_region', 'geo', 'region', 'country', 'location']),
-    role_track: getVal(['role_track', 'track', 'sequence_track']),
-    custom_icebreaker: getVal([
-      'custom_icebreaker',
-      'icebreaker',
-      'hook',
-      'personalization',
-      'first_line',
-    ]),
-  };
-}
-
-export default function CsvImporterPage() {
-  const [rows, setRows] = useState<NormalizedCsvRow[]>([]);
-  const [existingEmails, setExistingEmails] = useState<Set<string>>(new Set());
-  const [kpis, setKpis] = useState<GlobalKPIs | null>(null);
-  const [overrideGeo, setOverrideGeo] = useState<GeoRegion | 'AUTO'>('AUTO');
-  const [overrideTrack, setOverrideTrack] = useState<RoleTrack | 'AUTO'>('AUTO');
+export default function ImportPage() {
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<Mapping>({});
+  const [geo, setGeo] = useState("AUTO");
+  const [track, setTrack] = useState("AUTO");
+  const [preview, setPreview] = useState<ImportResponse | null>(null);
+  const [checking, setChecking] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    importedCount: number;
-    skippedDuplicatesCount: number;
-    invalidRowsCount: number;
-  } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const loadExistingLeads = useCallback(async () => {
-    try {
-      const res = await fetch('/api/leads', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      setKpis(data.kpis || null);
-      const emailSet = new Set<string>(
-        (data.leads || []).map((l: { email: string }) => l.email.toLowerCase())
-      );
-      setExistingEmails(emailSet);
-    } catch {
-      // Ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    loadExistingLeads();
-  }, [loadExistingLeads]);
-
-  const parseCsvString = (csvText: string) => {
-    setImportResult(null);
-    Papa.parse<Record<string, string>>(csvText, {
+  const parse = (file: File) => {
+    Papa.parse<Record<string, string>>(file, {
       header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const mapped = (results.data || []).map(mapHeaderRow);
-        setRows(mapped);
+      skipEmptyLines: "greedy",
+      transformHeader: (h) => h.trim(),
+      complete: (res) => {
+        const hs = (res.meta.fields ?? []).filter(Boolean);
+        setFileName(file.name);
+        setHeaders(hs);
+        setMapping(autoMapHeaders(hs));
+        setRawRows(res.data);
+        setPreview(null);
+        if (res.errors.length) toast(`${res.errors.length} CSV parse warning(s): ${res.errors[0].message}`, "info");
       },
+      error: (err) => toast(err.message, "err"),
     });
   };
 
-  const handleFileUpload = (file: File | null) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      if (content) parseCsvString(content);
-    };
-    reader.readAsText(file);
-  };
+  const mappedRows = useMemo(
+    () =>
+      rawRows.map((r) => {
+        const out: Record<string, string> = {};
+        for (const h of headers) {
+          const f = mapping[h];
+          if (f && r[h] !== undefined && r[h] !== "") out[f] = r[h];
+        }
+        return out;
+      }),
+    [rawRows, headers, mapping],
+  );
 
-  const handleDownloadSample = () => {
-    const blob = new Blob([SAMPLE_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'outreach-os-sample-leads.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const overrides = useMemo(() => ({ geo_region: geo, role_track: track }), [geo, track]);
 
-  const handleLoadSampleInline = () => {
-    parseCsvString(SAMPLE_CSV_CONTENT);
-  };
+  const check = useCallback(async () => {
+    if (!mappedRows.length) return;
+    setChecking(true);
+    try {
+      setPreview(await api<ImportResponse>("/api/leads/import", { method: "POST", json: { rows: mappedRows, overrides, dryRun: true } }));
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setChecking(false);
+    }
+  }, [mappedRows, overrides]);
 
-  const handleIngestLeads = async () => {
-    if (rows.length === 0 || importing) return;
+  useEffect(() => {
+    const t = setTimeout(check, 400);
+    return () => clearTimeout(t);
+  }, [check]);
+
+  async function doImport() {
     setImporting(true);
     try {
-      const res = await fetch('/api/leads/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows,
-          overrideGeo,
-          overrideTrack,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setImportResult({
-          importedCount: data.importedCount,
-          skippedDuplicatesCount: data.skippedDuplicatesCount,
-          invalidRowsCount: data.invalidRowsCount,
-        });
-        if (data.kpis) setKpis(data.kpis);
-        await loadExistingLeads();
-      }
+      const r = await api<ImportResponse>("/api/leads/import", { method: "POST", json: { rows: mappedRows, overrides } });
+      toast(`Imported ${r.summary.inserted} lead(s) · Touch 1 queued`);
+      broadcastRefresh();
+      setPreview(r);
+      setRawRows([]);
+      setHeaders([]);
+      setFileName(null);
+    } catch (e) {
+      toast((e as Error).message, "err");
     } finally {
       setImporting(false);
     }
-  };
+  }
+
+  function downloadSample() {
+    const url = URL.createObjectURL(new Blob([SAMPLE_CSV], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "outreach-os-sample.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const hasEmail = Object.values(mapping).includes("email");
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#09090B]">
-      <CommandHeader kpis={kpis} onRefreshData={loadExistingLeads} />
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 space-y-6">
-        {/* Top Header Card */}
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[#27272A] bg-[#121215] p-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
-              <h1 className="text-base font-bold uppercase tracking-wider text-[#FAFAFA]">
-                Bulk CSV Lead Importer & Track Classifier
-              </h1>
-            </div>
-            <p className="mt-1 text-xs text-zinc-400">
-              Upload recruiter, founder, or hiring manager CSV lists. Automatically validates email syntax, deduplicates against active & archived leads, and assigns Role Tracks.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleLoadSampleInline}
-              className="rounded border border-[#27272A] bg-[#18181C] px-3 py-2 text-xs font-medium text-zinc-200 hover:border-zinc-600"
-            >
-              Load Sample Leads Preview
-            </button>
-            <button
-              onClick={handleDownloadSample}
-              className="flex items-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Download Sample CSV</span>
-            </button>
-          </div>
+    <div className="mx-auto max-w-6xl px-5 py-6">
+      <div className="mb-5 flex items-end justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Bulk CSV Importer</h1>
+          <p className="mt-1 text-sm text-dim">Headers are auto-mapped. Emails are deduplicated against the file and every existing lead (archived addresses stay locked).</p>
         </div>
+        <Button size="sm" onClick={downloadSample}>
+          <Download className="h-3.5 w-3.5" /> Sample CSV
+        </Button>
+      </div>
 
-        {/* Drag and Drop Upload Box + Bulk Override Controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <label
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const file = e.dataTransfer.files?.[0] || null;
-              handleFileUpload(file);
-            }}
-            className="lg:col-span-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#27272A] bg-[#121215] p-8 text-center hover:border-emerald-500/50 hover:bg-[#16161A] transition-colors"
-          >
-            <UploadCloud className="h-8 w-8 text-emerald-400 mb-2" />
-            <p className="text-sm font-semibold text-[#FAFAFA]">
-              Drop your `.csv` lead list here, or click to browse
-            </p>
-            <p className="mt-1 font-mono text-[11px] text-zinc-500">
-              Supported columns: first_name, last_name, email, company_name, job_title, target_role_opening, geo_region, role_track, custom_icebreaker
-            </p>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) => handleFileUpload(e.target.files?.[0] || null)}
-              className="hidden"
-            />
-          </label>
-
-          {/* Bulk Override Controls */}
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] p-5 space-y-4">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-zinc-300">
-              Import Assignment Rules
-            </h3>
-
-            <div>
-              <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                Role Track Assignment
-              </label>
-              <select
-                value={overrideTrack}
-                onChange={(e) => setOverrideTrack(e.target.value as RoleTrack | 'AUTO')}
-                className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-xs text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-              >
-                <option value="AUTO">AUTO-DETECT (from CSV column or Job Title)</option>
-                <option value="HYBRID_DEFAULT">Force All → HYBRID_DEFAULT</option>
-                <option value="BRAND">Force All → BRAND (Sr. Brand Marketing)</option>
-                <option value="AI_PMM">Force All → AI_PMM (AI Product Marketing)</option>
-                <option value="AI_PM">Force All → AI_PM (AI Product Manager)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                Geo Region / Timezone Window
-              </label>
-              <select
-                value={overrideGeo}
-                onChange={(e) => setOverrideGeo(e.target.value as GeoRegion | 'AUTO')}
-                className="w-full rounded border border-[#27272A] bg-[#09090B] px-3 py-2 text-xs text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-              >
-                <option value="AUTO">AUTO-DETECT (from CSV column or .in/.com)</option>
-                <option value="INDIA">Force All → INDIA (IST 10:00–18:00)</option>
-                <option value="US">Force All → US (EST 09:00–17:00)</option>
-                <option value="GLOBAL">Force All → GLOBAL (UTC 09:00–18:00)</option>
-              </select>
-            </div>
-
-            <button
-              onClick={handleIngestLeads}
-              disabled={rows.length === 0 || importing}
-              className="w-full rounded bg-emerald-500 py-2.5 text-xs font-bold uppercase tracking-wider text-[#09090B] hover:bg-emerald-400 disabled:opacity-40 transition-colors"
-            >
-              {importing
-                ? 'Ingesting & Scheduling Touch 1...'
-                : `Ingest ${rows.length} Leads into Funnel`}
-            </button>
-          </div>
-        </div>
-
-        {/* Import Result Summary Banner */}
-        {importResult && (
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 font-mono text-xs">
-            <div className="flex items-center gap-2 text-emerald-300">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>
-                Import Complete: <strong>{importResult.importedCount}</strong> new leads queued for Touch 1 ·{' '}
-                <strong>{importResult.skippedDuplicatesCount}</strong> duplicates skipped ·{' '}
-                <strong>{importResult.invalidRowsCount}</strong> invalid rows rejected.
-              </span>
-            </div>
-          </div>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files[0];
+          if (f) parse(f);
+        }}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          "flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-line bg-card px-6 py-10 text-center transition-colors hover:border-line-strong",
+          dragOver && "border-zinc-400 bg-raised",
         )}
+      >
+        {fileName ? <FileSpreadsheet className="h-7 w-7 text-emerald-300" /> : <Upload className="h-7 w-7 text-dim" />}
+        <div className="mt-3 text-sm">{fileName ? `${fileName} · ${rawRows.length} rows` : "Drop a CSV here or click to browse"}</div>
+        <div className="mt-1 text-xs text-dim">Apollo, LinkedIn Sales Navigator, Clay or hand-built exports all work</div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) parse(f);
+            e.target.value = "";
+          }}
+        />
+      </div>
 
-        {/* Parsed Preview Table */}
-        {rows.length > 0 && (
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[#27272A] px-4 py-3">
-              <span className="font-mono text-xs font-bold uppercase text-[#FAFAFA]">
-                Parsed CSV Preview ({rows.length} Rows)
-              </span>
-              <button
-                onClick={() => setRows([])}
-                className="font-mono text-xs text-zinc-400 hover:text-white"
-              >
-                Clear Preview
-              </button>
+      {headers.length > 0 && (
+        <div className="mt-6 grid gap-4 lg:grid-cols-[320px_1fr]">
+          <Card className="h-fit p-4">
+            <div className="mb-3 text-sm font-medium">Column mapping</div>
+            <div className="space-y-2">
+              {headers.map((h) => (
+                <div key={h} className="grid grid-cols-[1fr_150px] items-center gap-2">
+                  <span className="truncate font-mono text-[11px] text-muted" title={h}>
+                    {h}
+                  </span>
+                  <Select
+                    className="h-8 text-xs"
+                    value={mapping[h] ?? ""}
+                    onChange={(e) => setMapping({ ...mapping, [h]: e.target.value as Mapping[string] })}
+                  >
+                    <option value="">— ignore —</option>
+                    {FIELD_OPTIONS.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
             </div>
+            {!hasEmail && <div className="mt-3 text-xs text-rose-300">Map a column to “email” to continue.</div>}
 
-            <div className="overflow-x-auto">
+            <div className="mt-5 border-t border-line pt-4">
+              <div className="mb-3 text-sm font-medium">Bulk overrides</div>
+              <Label>Geo region</Label>
+              <Select value={geo} onChange={(e) => setGeo(e.target.value)} className="mb-3">
+                <option value="AUTO">Auto (from CSV / location / domain)</option>
+                {GEO_REGIONS.map((g) => (
+                  <option key={g}>{g}</option>
+                ))}
+              </Select>
+              <Label>Role track</Label>
+              <Select value={track} onChange={(e) => setTrack(e.target.value)}>
+                <option value="AUTO">Auto (from target role opening)</option>
+                {ROLE_TRACKS.map((g) => (
+                  <option key={g}>{g}</option>
+                ))}
+              </Select>
+            </div>
+          </Card>
+
+          <Card className="min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                {preview ? (
+                  <>
+                    <Badge tone="emerald">{preview.summary.new} NEW</Badge>
+                    <Badge tone="amber">{preview.summary.duplicateExisting} ALREADY IN CRM</Badge>
+                    <Badge>{preview.summary.duplicateInFile} DUP IN FILE</Badge>
+                    <Badge tone="rose">{preview.summary.invalid} INVALID</Badge>
+                  </>
+                ) : (
+                  <span className="text-dim">{checking ? "Checking duplicates…" : "Preview"}</span>
+                )}
+              </div>
+              <Button variant="primary" size="sm" onClick={doImport} loading={importing} disabled={!hasEmail || !preview?.summary.new || preview.dryRun === false}>
+                Import {preview?.summary.new ?? 0} lead(s)
+              </Button>
+            </div>
+            <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-[#27272A] bg-[#09090B] font-mono text-[10px] uppercase text-zinc-400">
-                  <tr>
-                    <th className="px-4 py-2.5">Status</th>
-                    <th className="px-4 py-2.5">Company</th>
-                    <th className="px-4 py-2.5">Contact</th>
-                    <th className="px-4 py-2.5">Email</th>
-                    <th className="px-4 py-2.5">Target Opening / Title</th>
-                    <th className="px-4 py-2.5">Geo</th>
-                    <th className="px-4 py-2.5">Track</th>
-                    <th className="px-4 py-2.5">Custom Icebreaker</th>
+                <thead className="sticky top-0 bg-card font-mono text-[10px] tracking-wider text-dim uppercase">
+                  <tr className="border-b border-line">
+                    <th className="px-3 py-2">#</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Email</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Company</th>
+                    <th className="px-3 py-2">Geo</th>
+                    <th className="px-3 py-2">Track</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#27272A]">
-                  {rows.map((r, idx) => {
-                    const isDup = existingEmails.has(r.email);
-                    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email);
-                    const displayGeo =
-                      overrideGeo !== 'AUTO'
-                        ? overrideGeo
-                        : (r.geo_region?.toUpperCase() as GeoRegion) || 'INDIA';
-                    const displayTrack =
-                      overrideTrack !== 'AUTO'
-                        ? overrideTrack
-                        : (r.role_track?.toUpperCase() as RoleTrack) || 'HYBRID_DEFAULT';
-
+                <tbody>
+                  {(preview?.results ?? []).slice(0, 500).map((r) => {
+                    const src = mappedRows[r.row - 1] ?? {};
                     return (
-                      <tr key={idx} className="hover:bg-[#18181C]">
-                        <td className="px-4 py-2.5 font-mono text-[11px]">
-                          {!isValidEmail || !r.company_name ? (
-                            <span className="flex items-center gap-1 text-rose-400">
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                              Invalid
-                            </span>
-                          ) : isDup ? (
-                            <span className="text-amber-400">Duplicate</span>
-                          ) : (
-                            <span className="text-emerald-400">Ready</span>
+                      <tr key={r.row} className="border-b border-line/60">
+                        <td className="px-3 py-1.5 font-mono text-dim">{r.row}</td>
+                        <td className="px-3 py-1.5">
+                          {r.status === "NEW" && <Badge tone="emerald">{preview?.dryRun ? "NEW" : "IMPORTED"}</Badge>}
+                          {r.status === "INVALID" && <Badge tone="rose" title={r.error}>INVALID</Badge>}
+                          {r.status === "DUPLICATE_IN_FILE" && <Badge>DUP · FILE</Badge>}
+                          {r.status === "DUPLICATE_EXISTING" && (
+                            <Badge tone="amber" title={r.stage}>
+                              {r.locked ? "LOCKED" : "EXISTS"} · {r.stage}
+                            </Badge>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 font-mono font-semibold text-[#FAFAFA]">
-                          {r.company_name || '—'}
-                        </td>
-                        <td className="px-4 py-2.5 text-zinc-200">
-                          {r.first_name} {r.last_name}
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-zinc-300">
-                          {r.email || '—'}
-                        </td>
-                        <td className="px-4 py-2.5 text-zinc-400">
-                          {r.target_role_opening || r.job_title || '—'}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
-                            {GEO_REGION_META[displayGeo]?.code || displayGeo}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300">
-                            {ROLE_TRACK_META[displayTrack]?.shortLabel || displayTrack}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 max-w-xs truncate text-zinc-400">
-                          {r.custom_icebreaker || <span className="text-zinc-600">(none)</span>}
-                        </td>
+                        <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.email : r.status === "INVALID" ? <span className="text-rose-300">{r.error}</span> : r.email}</td>
+                        <td className="px-3 py-1.5 text-muted">{r.status === "NEW" ? `${r.lead.first_name} ${r.lead.last_name ?? ""}` : src.first_name ?? src.full_name ?? ""}</td>
+                        <td className="px-3 py-1.5 text-muted">{r.status === "NEW" ? r.lead.company_name : src.company_name ?? ""}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.geo_region : ""}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.role_track : ""}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+              {preview && preview.results.length > 500 && <div className="px-3 py-2 text-xs text-dim">Showing first 500 rows.</div>}
             </div>
-          </div>
-        )}
-      </main>
+          </Card>
+        </div>
+      )}
+
+      {preview && !preview.dryRun && (
+        <div className="mt-4 text-sm text-emerald-300">
+          Done — {preview.summary.inserted} lead(s) queued.{" "}
+          <Link href="/approvals" className="underline">
+            Review in the Approval Queue →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

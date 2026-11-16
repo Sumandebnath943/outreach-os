@@ -1,96 +1,91 @@
-# Portfolio Telemetry Integration (`sumandebnath.houseofnamus.com`)
+# Portfolio Telemetry Snippet
 
-Mount the `<PortfolioTracker />` client component inside your portfolio repository (`sumandebnath.houseofnamus.com`) to stream real-time recruiter browse sessions, exact pages visited (`/agents/migi`, `/projects/roasmind`, `/resume`), and dwell duration back to **OutreachOS**.
+Drop this client component into the **sumandebnath.houseofnamus.com** repository so recruiter browsing
+sessions show up on the OutreachOS Kanban in real time.
 
-## 1. Create `components/PortfolioTracker.tsx` in your Portfolio Repo
+1. Save it as `components/PortfolioTracker.tsx` and replace `https://YOUR-OUTREACH-OS.vercel.app` with your
+   OutreachOS deployment URL (Settings → *Portfolio telemetry snippet* shows a copy with the URL pre-filled).
+2. Mount it once inside the root `app/layout.tsx` body: `<PortfolioTracker />`.
+3. Make sure the portfolio origin (and its `www.` variant, if you serve one) is listed in OutreachOS
+   `PORTFOLIO_ALLOWED_ORIGINS`.
+
+**How it works:** every tracked email link lands on `/?ref=<lead_uuid>`. The component stores the ref in
+`sessionStorage`/`localStorage`, then on each route change sends a `view` beacon (counts the page and promotes the
+lead to WARM_ENGAGED). Whenever the tab is hidden, the route changes or the page unloads it sends a `leave` beacon
+carrying the cumulative *visible* time on that page as `durationSec` (shown in the dossier as "Viewed /agents/migi
+for 84s"). Beacons use `text/plain` so no CORS preflight is needed, and visitors without a ref are never tracked.
+
+> Testing tip: clicking your own tracked link stores that lead's ref in your browser. Clear the `oos_ref` key from
+> localStorage afterwards (or test in a private window) so your own browsing is not attributed to the recruiter.
 
 ```tsx
-'use client';
+"use client";
+// components/PortfolioTracker.tsx — mount once in app/layout.tsx:  <PortfolioTracker />
+// Reports recruiter page views back to OutreachOS when the visit came from a tracked email (?ref=<lead uuid>).
+import { Suspense, useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 
-import { Suspense, useEffect, useRef } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+const ENDPOINT = "https://YOUR-OUTREACH-OS.vercel.app/api/track/portfolio";
+const KEY = "oos_ref";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const OUTREACH_OS_WEBHOOK =
-  process.env.NEXT_PUBLIC_OUTREACH_OS_URL
-    ? `${process.env.NEXT_PUBLIC_OUTREACH_OS_URL.replace(/\/+$/, '')}/api/track/portfolio`
-    : 'https://your-outreach-os-domain.vercel.app/api/track/portfolio';
+function send(payload: Record<string, unknown>) {
+  const body = JSON.stringify(payload);
+  // text/plain keeps sendBeacon a "simple" CORS request (no preflight)
+  if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "text/plain" }))) return;
+  fetch(ENDPOINT, { method: "POST", body, keepalive: true, mode: "cors", headers: { "Content-Type": "text/plain" } }).catch(() => {});
+}
 
-function PortfolioTrackerInner() {
+function Tracker() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const enteredAtRef = useRef<number>(Date.now());
+  const params = useSearchParams();
+
+  // Persist ?ref= so later pages and return visits are attributed to the same recruiter
+  useEffect(() => {
+    const ref = params.get("ref");
+    if (ref && UUID.test(ref)) {
+      try { sessionStorage.setItem(KEY, ref); localStorage.setItem(KEY, ref); } catch {}
+    }
+  }, [params]);
 
   useEffect(() => {
-    // 1. Capture ?ref={{lead_uuid}} from incoming cold email link & persist in sessionStorage
-    const urlRef = searchParams?.get('ref');
-    if (urlRef) {
-      sessionStorage.setItem('outreach_os_ref', urlRef);
-    }
+    let ref: string | null = null;
+    try { ref = sessionStorage.getItem(KEY) || localStorage.getItem(KEY); } catch {}
+    if (!ref) return;
 
-    const activeRef = urlRef || sessionStorage.getItem('outreach_os_ref');
-    if (!activeRef) return;
+    const path = pathname;
+    let visibleMs = 0;
+    let since: number | null = document.visibilityState === "visible" ? Date.now() : null;
+    const pause = () => { if (since !== null) { visibleMs += Date.now() - since; since = null; } };
+    // durationSec is cumulative visible time; the server keeps the largest value reported
+    const report = () => send({ ref, path, type: "leave", durationSec: Math.round(visibleMs / 1000) });
 
-    enteredAtRef.current = Date.now();
+    send({ ref, path, type: "view", title: document.title, referrer: document.referrer });
 
-    // 2. Fire immediate pageview beacon
-    fetch(OUTREACH_OS_WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ref: activeRef,
-        path: pathname || '/',
-        durationSec: 5,
-        referrer: document.referrer || null,
-      }),
-      keepalive: true,
-    }).catch(() => {});
-
-    // 3. Log exact dwell duration when recruiter navigates away or closes tab
-    const sendDwellDuration = () => {
-      const durationSec = Math.round((Date.now() - enteredAtRef.current) / 1000);
-      if (durationSec < 2) return;
-      const payload = JSON.stringify({
-        ref: activeRef,
-        path: pathname || '/',
-        durationSec,
-      });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(OUTREACH_OS_WEBHOOK, payload);
-      }
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") { pause(); report(); } // the tab may never come back
+      else if (since === null) since = Date.now();
     };
-
-    window.addEventListener('pagehide', sendDwellDuration);
+    const onPageHide = () => { pause(); report(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
     return () => {
-      sendDwellDuration();
-      window.removeEventListener('pagehide', sendDwellDuration);
+      pause();
+      report(); // route change
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
     };
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   return null;
 }
 
-export function PortfolioTracker() {
+// useSearchParams needs a Suspense boundary in the App Router
+export default function PortfolioTracker() {
   return (
     <Suspense fallback={null}>
-      <PortfolioTrackerInner />
+      <Tracker />
     </Suspense>
-  );
-}
-```
-
-## 2. Mount inside `app/layout.tsx`
-
-```tsx
-import { PortfolioTracker } from '@/components/PortfolioTracker';
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        <PortfolioTracker />
-        {children}
-      </body>
-    </html>
   );
 }
 ```

@@ -1,82 +1,77 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { recordPortfolioView } from '@/lib/db';
+import { after, type NextRequest } from "next/server";
+import { attachDuration, recordEngagement } from "@/lib/server/engagement";
+import { env } from "@/lib/server/env";
+import { UUID_RE } from "@/lib/utils";
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+export const dynamic = "force-dynamic";
 
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: CORS_HEADERS,
-  });
+function corsHeaders(origin: string | null): Record<string, string> {
+  const allowed = env.portfolioOrigins();
+  const ok = origin && (allowed.includes("*") || allowed.includes(origin.replace(/\/$/, "")));
+  return {
+    ...(ok ? { "Access-Control-Allow-Origin": origin! } : {}),
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
 }
 
+function originAllowed(origin: string | null): boolean {
+  const allowed = env.portfolioOrigins();
+  if (allowed.includes("*")) return true;
+  return Boolean(origin && allowed.includes(origin.replace(/\/$/, "")));
+}
+
+export function OPTIONS(req: NextRequest) {
+  return new Response(null, { status: 204, headers: corsHeaders(req.headers.get("origin")) });
+}
+
+/**
+ * POST /api/track/portfolio — beacon from sumandebnath.houseofnamus.com
+ * Body (JSON, sent as text/plain via sendBeacon or application/json via fetch):
+ *   { ref: lead_uuid, path: "/agents/migi", type?: "view" | "leave", durationSec?: number, title?: string }
+ */
 export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  const headers = corsHeaders(origin);
+  if (!originAllowed(origin)) return new Response("origin not allowed", { status: 403, headers });
+
+  let body: Record<string, unknown> = {};
   try {
-    let payload: {
-      ref?: string;
-      lead_id?: string;
-      path?: string;
-      durationSec?: number;
-      referrer?: string;
-      title?: string;
-    } = {};
-
-    const contentType = req.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      payload = await req.json();
-    } else {
-      // Support navigator.sendBeacon text/plain JSON payloads
-      const rawText = await req.text();
-      if (rawText) {
-        payload = JSON.parse(rawText);
-      }
-    }
-
-    const leadId = (payload.ref || payload.lead_id || '').trim();
-    const pagePath = (payload.path || '/').trim();
-    const durationSec = typeof payload.durationSec === 'number' ? payload.durationSec : 0;
-
-    if (!leadId) {
-      return NextResponse.json(
-        { error: 'Missing ref / lead_id parameter' },
-        { status: 400, headers: CORS_HEADERS }
-      );
-    }
-
-    const userAgent = req.headers.get('user-agent') || 'unknown';
-    const origin = req.headers.get('origin') || 'https://sumandebnath.houseofnamus.com';
-
-    const updatedLead = await recordPortfolioView({
-      leadId,
-      pagePath,
-      durationSec,
-      metadata: {
-        origin,
-        userAgent,
-        referrer: payload.referrer || null,
-        title: payload.title || null,
-      },
-    });
-
-    return NextResponse.json(
-      {
-        tracked: Boolean(updatedLead),
-        leadId,
-        path: pagePath,
-        durationSec,
-        stage: updatedLead?.funnel_stage || null,
-      },
-      { status: 200, headers: CORS_HEADERS }
-    );
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to record portfolio view';
-    return NextResponse.json(
-      { error: message },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    body = JSON.parse(await req.text());
+  } catch {
+    return new Response("bad payload", { status: 400, headers });
   }
+
+  const ref = String(body.ref ?? "");
+  if (!UUID_RE.test(ref)) return new Response(null, { status: 204, headers });
+  let path = String(body.path ?? "/").slice(0, 300);
+  if (!path.startsWith("/")) path = `/${path}`;
+  const type = body.type === "leave" ? "leave" : "view";
+  const duration = Math.max(0, Math.min(7200, Math.round(Number(body.durationSec ?? 0)) || 0));
+  const ua = req.headers.get("user-agent") ?? "";
+
+  after(async () => {
+    try {
+      if (type === "leave") {
+        await attachDuration(ref, path, duration);
+      } else {
+        await recordEngagement(ref, "view", {
+          page: path,
+          metadata: {
+            path,
+            title: typeof body.title === "string" ? body.title.slice(0, 200) : undefined,
+            durationSec: duration || undefined,
+            referrer: typeof body.referrer === "string" ? body.referrer.slice(0, 300) : undefined,
+            ua: ua.slice(0, 300),
+          },
+        });
+      }
+    } catch (e) {
+      console.error("[track/portfolio]", e);
+    }
+  });
+
+  return new Response(null, { status: 204, headers });
 }

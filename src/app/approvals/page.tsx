@@ -1,499 +1,274 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  CheckCircle2,
-  Clock,
-  Edit3,
-  Eye,
-  Flame,
-  MousePointerClick,
-  PauseCircle,
-  Send,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react';
-import CommandHeader from '@/components/CommandHeader';
-import LeadDossierDrawer from '@/components/LeadDossierDrawer';
-import {
-  BranchVariant,
-  GEO_REGION_META,
-  GlobalKPIs,
-  Lead,
-  ROLE_TRACK_META,
-} from '@/types/outreach';
+import { useEffect, useMemo, useState } from "react";
+import { CheckCheck, Clock, Eye, Pause, RotateCcw, Save, Send } from "lucide-react";
+import { api, broadcastRefresh, usePoll } from "@/lib/client";
+import { GEO_LABEL, touchLabel } from "@/lib/meta";
+import { previewLinks, stripImages, toHtml } from "@/lib/render";
+import { localTimeLabel } from "@/lib/schedule";
+import type { ApprovalItem, ExecutionMode, QueueReport, SystemSettings } from "@/lib/types";
+import { cn, fullName, relTime } from "@/lib/utils";
+import { Badge, Button, Card, Empty, Input, Label, Textarea, toast } from "@/components/ui";
 
-interface ApprovalQueueItem {
-  lead: Lead;
-  touchNumber: 1 | 2 | 3 | 4;
-  branchVariant: BranchVariant;
-  branchReason: string;
-  subject: string;
-  bodyText: string;
-  bodyHtml: string;
-  sameThread: boolean;
-  windowStatus: {
-    allowed: boolean;
-    reason: string;
-    localTimeStr: string;
-    timezone: string;
-  };
-}
+type Item = ApprovalItem;
 
-export default function MorningApprovalQueuePage() {
-  const [items, setItems] = useState<ApprovalQueueItem[]>([]);
-  const [kpis, setKpis] = useState<GlobalKPIs | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+const touchName = (i: Item) => touchLabel(i.touchNumber, i.variant, true);
 
-  // Inline edits keyed by lead.id
-  const [edits, setEdits] = useState<
-    Record<
-      string,
-      {
-        subject: string;
-        body: string;
-        custom_icebreaker: string;
-        isEditing: boolean;
-      }
-    >
-  >({});
-
-  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
-  const [batchDispatching, setBatchDispatching] = useState(false);
-  const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(
-    null
-  );
-
-  const loadQueue = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/approvals', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const loadedItems: ApprovalQueueItem[] = data.items || [];
-      setItems(loadedItems);
-      setKpis(data.kpis || null);
-
-      const initialEdits: Record<
-        string,
-        { subject: string; body: string; custom_icebreaker: string; isEditing: boolean }
-      > = {};
-      for (const item of loadedItems) {
-        initialEdits[item.lead.id] = {
-          subject: item.subject,
-          body: item.bodyText,
-          custom_icebreaker: item.lead.custom_icebreaker || '',
-          isEditing: false,
-        };
-      }
-      setEdits(initialEdits);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+function ApprovalCard({
+  item,
+  selected,
+  onToggle,
+  settings,
+  onChanged,
+}: {
+  item: Item;
+  selected: boolean;
+  onToggle: () => void;
+  settings: SystemSettings | null;
+  onChanged: () => void;
+}) {
+  const [subject, setSubject] = useState(item.subject);
+  const [body, setBody] = useState(item.body);
+  const [ice, setIce] = useState(item.lead.custom_icebreaker ?? "");
+  const [preview, setPreview] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    loadQueue();
-  }, [loadQueue]);
+    setSubject(item.subject);
+    setBody(item.body);
+    setIce(item.lead.custom_icebreaker ?? "");
+  }, [item.subject, item.body, item.lead.custom_icebreaker]);
 
-  const handleDispatchSingle = async (leadId: string) => {
-    setDispatchingId(leadId);
-    setBanner(null);
-    const edit = edits[leadId];
+  const dirty = subject !== item.subject || body !== item.body;
+  const lead = item.lead;
+
+  const html = useMemo(() => {
+    if (!preview || !settings) return "";
+    return stripImages(toHtml(body, previewLinks(lead.id, settings.portfolio_base_url, settings.resume_url)));
+  }, [preview, settings, body, lead.id]);
+
+  async function run(label: string, fn: () => Promise<unknown>) {
+    setBusy(label);
     try {
-      const res = await fetch('/api/approvals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'DISPATCH_SINGLE',
-          leadId,
-          subject: edit?.subject,
-          body: edit?.body,
-          custom_icebreaker: edit?.custom_icebreaker,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setBanner({ type: 'error', text: data.error || 'Dispatch failed' });
-        return;
-      }
-
-      if (data.haltedByReply) {
-        setBanner({
-          type: 'error',
-          text: data.message || 'Halted: Inbound reply detected in Gmail thread!',
-        });
-      } else {
-        setBanner({
-          type: 'success',
-          text: `Approved & Dispatched Touch ${data.emailLog?.touch_number} (${data.emailLog?.branch_variant}) to ${data.lead?.email} via ${data.emailLog?.provider}.`,
-        });
-      }
-      await loadQueue();
+      await fn();
+      toast(label);
+      onChanged();
+    } catch (e) {
+      toast((e as Error).message, "err");
     } finally {
-      setDispatchingId(null);
+      setBusy(null);
     }
-  };
-
-  const handleDispatchBatch = async () => {
-    if (items.length === 0 || batchDispatching) return;
-    setBatchDispatching(true);
-    setBanner(null);
-    try {
-      const batchPayload = items.map((item) => {
-        const edit = edits[item.lead.id];
-        return {
-          leadId: item.lead.id,
-          subject: edit?.subject ?? item.subject,
-          body: edit?.body ?? item.bodyText,
-          custom_icebreaker: edit?.custom_icebreaker ?? item.lead.custom_icebreaker,
-        };
-      });
-
-      const res = await fetch('/api/approvals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'DISPATCH_BATCH',
-          items: batchPayload,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setBanner({ type: 'error', text: data.error || 'Batch dispatch failed' });
-        return;
-      }
-
-      setBanner({
-        type: 'success',
-        text: `Batch Complete: Dispatched ${data.dispatchedCount} emails. ${
-          data.haltedByReplyCount > 0
-            ? `Halted ${data.haltedByReplyCount} due to inbound reply!`
-            : ''
-        }`,
-      });
-      await loadQueue();
-    } finally {
-      setBatchDispatching(false);
-    }
-  };
-
-  const handlePauseLead = async (leadId: string) => {
-    await fetch('/api/approvals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'PAUSE_LEAD',
-        leadId,
-      }),
-    });
-    await loadQueue();
-  };
+  }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#09090B]">
-      <CommandHeader kpis={kpis} onRefreshData={loadQueue} />
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 space-y-6">
-        {/* Page Header & Batch Action Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[#27272A] bg-[#121215] p-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-amber-400" />
-              <h1 className="text-base font-bold uppercase tracking-wider text-[#FAFAFA]">
-                Morning Approval Queue
-              </h1>
-              <span className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-xs font-bold text-amber-300">
-                {items.length} Due Now
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-zinc-400">
-              Review, customize inline subject/body or icebreakers, and dispatch due touches.
-              Pre-send Gmail thread verification runs automatically before every send.
-            </p>
-          </div>
-
-          <button
-            onClick={handleDispatchBatch}
-            disabled={items.length === 0 || batchDispatching}
-            className="flex items-center gap-2 rounded bg-emerald-500 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-[#09090B] hover:bg-emerald-400 disabled:opacity-40 transition-colors"
-          >
-            <Send className="h-4 w-4" />
-            <span>
-              {batchDispatching
-                ? 'Dispatching Batch...'
-                : `Approve & Dispatch Batch (${items.length})`}
+    <Card className={cn("overflow-hidden", selected && "border-zinc-500")}>
+      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+        <input type="checkbox" checked={selected} onChange={onToggle} className="h-4 w-4 accent-zinc-100" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold">{lead.company_name}</span>
+            <span className="truncate text-xs text-muted">
+              {fullName(lead)} · {lead.email}
             </span>
-          </button>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <Badge tone={item.touchNumber === 2 && item.variant === "WARM" ? "amber" : "sky"}>{touchName(item)}</Badge>
+            <Badge>{GEO_LABEL[lead.geo_region]}</Badge>
+            <Badge tone="violet">{lead.role_track}</Badge>
+            {item.hasDraft && <Badge tone="amber">EDITED</Badge>}
+            {lead.approval_status === "APPROVED" && <Badge tone="emerald">APPROVED</Badge>}
+            <span className="flex items-center gap-1 font-mono text-[10px] text-dim">
+              <Clock className="h-3 w-3" />
+              due {relTime(item.dueAt)} · {localTimeLabel(lead.geo_region)} ·{" "}
+              <span className={item.inWindow ? "text-emerald-400" : "text-amber-400"}>{item.inWindow ? "in window" : "outside window"}</span>
+            </span>
+          </div>
         </div>
-
-        {banner && (
-          <div
-            className={`rounded-lg border p-4 font-mono text-xs ${
-              banner.type === 'success'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
-            }`}
+        <div className="flex shrink-0 gap-1.5">
+          <Button size="sm" variant="ghost" onClick={() => setPreview((p) => !p)}>
+            <Eye className="h-3 w-3" /> {preview ? "Edit" : "Preview"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={busy === "Paused"}
+            onClick={() => run("Paused", () => api("/api/approvals", { method: "POST", json: { action: "pause", leadIds: [lead.id] } }))}
           >
-            {banner.text}
+            <Pause className="h-3 w-3" /> Pause
+          </Button>
+          {lead.approval_status === "APPROVED" ? (
+            <Button
+              size="sm"
+              onClick={() => run("Approval revoked", () => api("/api/approvals", { method: "POST", json: { action: "unapprove", leadIds: [lead.id] } }))}
+            >
+              Revoke
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="success"
+              disabled={dirty || !!item.error}
+              title={dirty ? "Save your edits first" : undefined}
+              onClick={() => run("Approved", () => api("/api/approvals", { method: "POST", json: { action: "approve", leadIds: [lead.id] } }))}
+            >
+              <CheckCheck className="h-3 w-3" /> Approve
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {item.error ? (
+        <div className="px-4 py-3 font-mono text-xs text-rose-300">{item.error}</div>
+      ) : preview ? (
+        <div className="px-4 py-4">
+          <div className="mb-3 text-sm font-medium">{subject}</div>
+          <div className="email-body rounded-md border border-line bg-bg p-4 text-[13px] leading-relaxed text-muted" dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+      ) : (
+        <div className="grid gap-3 px-4 py-4">
+          <div>
+            <Label hint={item.touchNumber > 1 ? "follow-ups reuse the original subject to stay in-thread" : undefined}>Subject</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={item.touchNumber > 1} />
           </div>
+          <div>
+            <Label hint="{{tracked_portfolio_url}} / {{tracked_resume_url}} become tracked links at send time">Body</Label>
+            <Textarea rows={Math.min(22, Math.max(8, body.split("\n").length + 1))} value={body} onChange={(e) => setBody(e.target.value)} className="font-mono text-[12.5px]" />
+          </div>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Label hint={item.hasDraft ? "reset the draft to re-render with a new icebreaker" : "saved to the lead, re-renders the draft"}>Custom icebreaker</Label>
+              <Input value={ice} onChange={(e) => setIce(e.target.value)} placeholder="Optional one-line personalised hook" />
+            </div>
+            <Button
+              size="md"
+              disabled={ice === (lead.custom_icebreaker ?? "")}
+              loading={busy === "Icebreaker saved"}
+              onClick={() => run("Icebreaker saved", () => api("/api/leads", { method: "PATCH", json: { id: lead.id, custom_icebreaker: ice } }))}
+            >
+              Update
+            </Button>
+          </div>
+          <div className="flex justify-end gap-2">
+            {item.hasDraft && (
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={busy === "Draft reset"}
+                onClick={() => run("Draft reset", () => api("/api/approvals", { method: "POST", json: { action: "reset_draft", leadId: lead.id } }))}
+              >
+                <RotateCcw className="h-3 w-3" /> Reset to template
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={!dirty}
+              loading={busy === "Draft saved"}
+              onClick={() => run("Draft saved", () => api("/api/approvals", { method: "POST", json: { action: "save_draft", leadId: lead.id, subject, body } }))}
+            >
+              <Save className="h-3 w-3" /> Save edits
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function ApprovalsPage() {
+  const { data, reload, loading, error } = usePoll<{ items: Item[]; mode: ExecutionMode }>("/api/approvals", 0);
+  const settingsPoll = usePoll<{ settings: SystemSettings }>("/api/settings", 0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dispatching, setDispatching] = useState(false);
+
+  const items = data?.items ?? [];
+  const pending = items.filter((i) => i.lead.approval_status === "PENDING" && !i.error);
+  const approved = items.filter((i) => i.lead.approval_status === "APPROVED");
+
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  async function approveAndDispatch() {
+    const ids = selected.size ? [...selected] : pending.map((i) => i.lead.id);
+    if (!ids.length) return;
+    setDispatching(true);
+    try {
+      await api("/api/approvals", { method: "POST", json: { action: "approve", leadIds: ids } });
+      const r = await api<QueueReport>("/api/queue/run", { method: "POST" });
+      const st = settingsPoll.data?.settings;
+      const jitter = st ? `${st.min_delay_minutes}–${st.max_delay_minutes} min` : "human";
+      toast(
+        `${ids.length} approved · ${r.sent.length ? `sent to ${r.sent.map((s) => s.email).join(", ")}` : "queued"} — the rest dispatch with ${jitter} jitter inside each recipient's window.`,
+      );
+      if (r.failed.length) toast(r.failed.map((f) => `${f.email}: ${f.error}`).join(" | "), "err");
+      setSelected(new Set());
+      reload();
+      broadcastRefresh();
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setDispatching(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl px-5 py-6">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Morning Approval Queue</h1>
+          <p className="mt-1 text-sm text-dim">
+            Touches due in the next 24h. Approved emails dispatch one at a time with human jitter, only inside each recipient&apos;s business hours.
+          </p>
+        </div>
+        <Button variant="primary" onClick={approveAndDispatch} loading={dispatching} disabled={!pending.length && !selected.size}>
+          <Send className="h-3.5 w-3.5" />
+          Approve &amp; Dispatch {selected.size ? `${selected.size} selected` : `Batch (${pending.length})`}
+        </Button>
+      </div>
+
+      {data?.mode === "AUTO_PILOT" && (
+        <div className="mb-4 rounded-md border border-emerald-500/25 bg-emerald-500/5 px-4 py-2.5 text-sm text-emerald-200">
+          Auto-pilot is on — due touches send automatically without approval. You can still edit drafts or pause individual leads here.
+        </div>
+      )}
+      {error && <div className="mb-4 text-sm text-rose-300">{error}</div>}
+
+      <div className="mb-3 flex items-center gap-3 font-mono text-[11px] text-dim">
+        <span>{pending.length} awaiting approval</span>
+        <span>·</span>
+        <span className="text-emerald-400">{approved.length} approved, waiting for window / jitter slot</span>
+        {pending.length > 0 && (
+          <button className="ml-auto hover:text-fg" onClick={() => setSelected(selected.size ? new Set() : new Set(pending.map((p) => p.lead.id)))}>
+            {selected.size ? "clear selection" : "select all"}
+          </button>
         )}
+      </div>
 
-        {/* Queue Cards */}
-        {loading ? (
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] p-12 text-center font-mono text-xs text-zinc-500">
-            Evaluating conditional Warm/Cold branches & rendering templates...
-          </div>
-        ) : items.length === 0 ? (
-          <div className="rounded-lg border border-[#27272A] bg-[#121215] p-12 text-center space-y-2">
-            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" />
-            <h3 className="font-mono text-sm font-bold text-[#FAFAFA]">
-              Approval Queue Clear
-            </h3>
-            <p className="text-xs text-zinc-400">
-              All due touches have been dispatched or are waiting for their +3/+5/+6 business-day cadence window.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {items.map((item) => {
-              const edit = edits[item.lead.id] || {
-                subject: item.subject,
-                body: item.bodyText,
-                custom_icebreaker: item.lead.custom_icebreaker || '',
-                isEditing: false,
-              };
-
-              const isWarmBranch = item.branchVariant === 'WARM';
-
-              return (
-                <div
-                  key={item.lead.id}
-                  className={`rounded-lg border bg-[#121215] p-5 transition-all ${
-                    isWarmBranch
-                      ? 'border-amber-500/40 shadow-[0_0_20px_-6px_rgba(245,158,11,0.2)]'
-                      : 'border-[#27272A]'
-                  }`}
-                >
-                  {/* Top Metadata Bar */}
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#27272A] pb-3.5">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={() => setSelectedLeadId(item.lead.id)}
-                          className="font-mono text-sm font-bold text-[#FAFAFA] hover:text-emerald-400 hover:underline"
-                        >
-                          {item.lead.company_name}
-                        </button>
-                        <span className="text-xs text-zinc-400">
-                          · {item.lead.first_name} {item.lead.last_name || ''} (
-                          {item.lead.email})
-                        </span>
-                        <span
-                          className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
-                            GEO_REGION_META[item.lead.geo_region]?.badgeClass
-                          }`}
-                        >
-                          {GEO_REGION_META[item.lead.geo_region]?.code}
-                        </span>
-                        <span
-                          className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
-                            ROLE_TRACK_META[item.lead.role_track]?.badgeClass
-                          }`}
-                        >
-                          {ROLE_TRACK_META[item.lead.role_track]?.shortLabel}
-                        </span>
-                      </div>
-
-                      {/* Conditional Branch Explanation Pill */}
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <span
-                          className={`flex items-center gap-1 rounded border px-2 py-0.5 font-mono text-[11px] font-bold ${
-                            isWarmBranch
-                              ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
-                              : 'border-sky-500/30 bg-sky-500/10 text-sky-300'
-                          }`}
-                        >
-                          {isWarmBranch && <Flame className="h-3 w-3" />}
-                          <span>
-                            TOUCH {item.touchNumber} ({item.branchVariant})
-                          </span>
-                        </span>
-                        <span className="font-mono text-xs text-zinc-400">
-                          {item.branchReason}
-                        </span>
-                        {item.sameThread && (
-                          <span className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
-                            RFC 2822 Same-Thread Reply
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right Telemetry & Window Info */}
-                    <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-                      <div className="flex items-center gap-2 rounded border border-[#27272A] bg-[#09090B] px-2.5 py-1 text-zinc-400">
-                        <span className="flex items-center gap-1">
-                          <Eye className="h-3 w-3 text-sky-400" />
-                          {item.lead.open_count}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MousePointerClick className="h-3 w-3 text-amber-400" />
-                          {item.lead.click_count}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Sparkles className="h-3 w-3 text-emerald-400" />
-                          {item.lead.portfolio_visit_count}
-                        </span>
-                      </div>
-
-                      <div
-                        className={`flex items-center gap-1 rounded border px-2.5 py-1 text-[11px] ${
-                          item.windowStatus.allowed
-                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                            : 'border-zinc-700 bg-zinc-900 text-zinc-400'
-                        }`}
-                      >
-                        <Clock className="h-3 w-3" />
-                        <span>{item.windowStatus.localTimeStr}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Subject & Body Preview / Inline Editor */}
-                  <div className="mt-4 space-y-3">
-                    {edit.isEditing ? (
-                      <div className="space-y-3 rounded border border-emerald-500/30 bg-[#09090B] p-4">
-                        {item.touchNumber === 1 && (
-                          <div>
-                            <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                              Custom 1-Sentence Icebreaker (`{'{{custom_icebreaker}}'}`)
-                            </label>
-                            <input
-                              type="text"
-                              value={edit.custom_icebreaker}
-                              onChange={(e) =>
-                                setEdits((prev) => ({
-                                  ...prev,
-                                  [item.lead.id]: {
-                                    ...edit,
-                                    custom_icebreaker: e.target.value,
-                                  },
-                                }))
-                              }
-                              placeholder="Optional personalized hook..."
-                              className="w-full rounded border border-[#27272A] bg-[#121215] px-3 py-1.5 text-xs text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-                        )}
-
-                        <div>
-                          <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                            Rendered Subject Line
-                          </label>
-                          <input
-                            type="text"
-                            value={edit.subject}
-                            onChange={(e) =>
-                              setEdits((prev) => ({
-                                ...prev,
-                                [item.lead.id]: { ...edit, subject: e.target.value },
-                              }))
-                            }
-                            className="w-full rounded border border-[#27272A] bg-[#121215] px-3 py-1.5 text-xs font-semibold text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block font-mono text-[10px] uppercase text-zinc-400 mb-1">
-                            Email Body (Tracked links & 1x1 open pixel auto-wrapped on send)
-                          </label>
-                          <textarea
-                            rows={10}
-                            value={edit.body}
-                            onChange={(e) =>
-                              setEdits((prev) => ({
-                                ...prev,
-                                [item.lead.id]: { ...edit, body: e.target.value },
-                              }))
-                            }
-                            className="w-full rounded border border-[#27272A] bg-[#121215] p-3 font-sans text-xs leading-relaxed text-[#FAFAFA] focus:border-emerald-500 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded border border-[#27272A] bg-[#09090B] p-4 space-y-2">
-                        <div className="flex items-center justify-between border-b border-[#27272A] pb-2">
-                          <div className="text-xs">
-                            <span className="font-mono text-zinc-500">Subject: </span>
-                            <span className="font-semibold text-[#FAFAFA]">
-                              {edit.subject}
-                            </span>
-                          </div>
-                        </div>
-                        <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-zinc-300 max-h-56 overflow-y-auto">
-                          {edit.body}
-                        </pre>
-                      </div>
-                    )}
-
-                    {/* Action Footer */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setEdits((prev) => ({
-                              ...prev,
-                              [item.lead.id]: {
-                                ...edit,
-                                isEditing: !edit.isEditing,
-                              },
-                            }))
-                          }
-                          className="flex items-center gap-1.5 rounded border border-[#27272A] bg-[#18181C] px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          <span>
-                            {edit.isEditing ? 'Done Editing' : 'Edit Subject / Body Inline'}
-                          </span>
-                        </button>
-
-                        <button
-                          onClick={() => handlePauseLead(item.lead.id)}
-                          className="flex items-center gap-1.5 rounded border border-[#27272A] bg-[#18181C] px-3 py-1.5 text-xs text-zinc-400 hover:border-rose-500/40 hover:text-rose-300"
-                        >
-                          <PauseCircle className="h-3.5 w-3.5" />
-                          <span>Pause Sequence</span>
-                        </button>
-                      </div>
-
-                      <button
-                        onClick={() => handleDispatchSingle(item.lead.id)}
-                        disabled={dispatchingId === item.lead.id}
-                        className="flex items-center gap-1.5 rounded bg-[#FAFAFA] px-4 py-1.5 text-xs font-bold text-[#09090B] hover:bg-zinc-200 disabled:opacity-50"
-                      >
-                        <Send className="h-3.5 w-3.5" />
-                        <span>
-                          {dispatchingId === item.lead.id
-                            ? 'Verifying Thread & Sending...'
-                            : `Approve & Dispatch Touch ${item.touchNumber}`}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
-
-      <LeadDossierDrawer
-        leadId={selectedLeadId}
-        onClose={() => setSelectedLeadId(null)}
-        onLeadUpdated={loadQueue}
-      />
+      {loading && !data ? (
+        <div className="h-40 animate-pulse rounded-lg bg-card" />
+      ) : items.length === 0 ? (
+        <Empty title="Inbox zero for outreach">Nothing is due in the next 24 hours. Import leads or check back tomorrow morning.</Empty>
+      ) : (
+        <div className="space-y-3">
+          {items.map((i) => (
+            <ApprovalCard
+              key={`${i.lead.id}-${i.touchNumber}`}
+              item={i}
+              selected={selected.has(i.lead.id)}
+              onToggle={() => toggle(i.lead.id)}
+              settings={settingsPoll.data?.settings ?? null}
+              onChanged={() => {
+                reload();
+                broadcastRefresh();
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
