@@ -12,7 +12,7 @@ create table public.system_settings (
   min_delay_minutes int not null default 3,
   max_delay_minutes int not null default 6,
   sender_name text not null default 'Suman Debnath',
-  sender_email text not null default 'sumandebnath944@gmail.com',
+  sender_email text not null default 'hire.sumandebnath@gmail.com',
   portfolio_base_url text not null default 'https://sumandebnath.houseofnamus.com',
   resume_url text not null default 'https://sumandebnath.houseofnamus.com/resume',
   gmail_refresh_token text,
@@ -158,7 +158,7 @@ If this aligns with your current or upcoming needs at {{company_name}}, I’d be
 
 Best regards,
 Suman Debnath
-+91 7980296957 | sumandebnath944@gmail.com
+hire.sumandebnath@gmail.com
 Portfolio: sumandebnath.houseofnamus.com$t$,
 0, false),
 
@@ -175,8 +175,7 @@ You can also explore the live interactive systems directly here: {{tracked_portf
 Open to a quick 15-minute intro call this week?
 
 Best,
-Suman Debnath
-+91 7980296957$t$,
+Suman Debnath$t$,
 3, true),
 
 ('HYBRID_DEFAULT', 2, 'COLD',
@@ -192,8 +191,7 @@ Everything is verifiable and live here: {{tracked_portfolio_url}}
 Would love to connect if {{company_name}} has current or upcoming openings across Senior Brand Marketing, AI PMM, or AI Product roles.
 
 Best regards,
-Suman Debnath
-+91 7980296957$t$,
+Suman Debnath$t$,
 3, true),
 
 ('HYBRID_DEFAULT', 3, 'STANDARD',
@@ -225,6 +223,6 @@ Wishing you and the {{company_name}} team a great quarter ahead.
 
 Best regards,
 Suman Debnath
-+91 7980296957 | sumandebnath944@gmail.com$t$,
+hire.sumandebnath@gmail.com$t$,
 6, true)
 on conflict (role_track, touch_number, branch_variant) do nothing;

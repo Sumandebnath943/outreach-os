@@ -20,6 +20,7 @@ Next.js 15 (App Router) · Supabase Postgres · Gmail API (OAuth2) / Resend · T
 | SQL schema + seeded master sequence | `supabase/migrations/001_init_outreach_os.sql` |
 | Runtime extensions (send windows, jitter gate, RPCs, RLS) | `supabase/migrations/002_runtime_extensions.sql` |
 | Hardening (`archived_at`, capped page list, RPCs locked to the service role) | `supabase/migrations/003_hardening.sql` |
+| Contact details (outreach address, no phone number) for an existing database | `supabase/migrations/004_contact_details.sql` |
 | Master worker (reply kill-switch → ghost archive → quota → window → jitter → claim → send) | `src/lib/server/sequencer.ts` |
 | Pure funnel rules (branching, templates, stage side effects, reply cutoff) | `src/lib/funnel.ts` |
 | Reply triage, bot filtering, provider error classes | `src/lib/signals.ts` |
@@ -118,8 +119,8 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run **all three** migration files in order in the SQL Editor: `001`, `002`, then `003`.
-   An existing database only needs `003`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001`, `002`, `003`, then `004`.
+   A database set up before these changes only needs `003` and `004`.
 2. From *Project Settings → API*, copy the Project URL and the `service_role` key.
 
 RLS is enabled with no policies, and the RPC functions can only be run by the service role. Only the server-side service-role key can touch the data.
@@ -136,7 +137,7 @@ In production the dashboard **refuses to start open**: without `DASHBOARD_PASSWO
 1. In Google Cloud Console, create a project and enable the **Gmail API**.
 2. Set up the OAuth consent screen:
    - Choose External / Testing.
-   - Add `sumandebnath944@gmail.com` as a test user.
+   - Add `hire.sumandebnath@gmail.com` (the account that sends) as a test user.
    - Add the scopes `gmail.send` and `gmail.readonly`.
 3. Create an OAuth Client ID of type *Web application*. Add these authorised redirect URIs:
    - `https://<your-app>/api/auth/google/callback`, for the built-in connect button.
