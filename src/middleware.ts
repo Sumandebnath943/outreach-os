@@ -47,13 +47,19 @@ function isCrossSite(req: NextRequest): boolean {
   }
 }
 
-/** True when the request carries a valid session cookie or valid Basic credentials. */
+/**
+ * True when the request carries a valid session cookie, or valid Basic credentials from a
+ * non-browser client. Browsers (which send Sec-Fetch-Site) must use the session cookie: they
+ * silently replay Basic credentials cached from the old password popup, which would make
+ * Sign out impossible.
+ */
 export async function isSignedIn(req: NextRequest): Promise<boolean> {
   const password = process.env.DASHBOARD_PASSWORD;
   if (!password) return false;
   const user = process.env.DASHBOARD_USER || "admin";
   const key = sessionKey({ password, sessionSecret: process.env.SESSION_SECRET, cronSecret: process.env.CRON_SECRET })!;
   if (await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, user, key)) return true;
+  if (req.headers.has("sec-fetch-site")) return false;
   const creds = decodeBasic(req.headers.get("authorization") ?? "");
   return Boolean(creds && safeEqual(creds[0], user) && safeEqual(creds[1], password));
 }

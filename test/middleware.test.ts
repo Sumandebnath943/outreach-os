@@ -71,6 +71,15 @@ describe("signed-in visitors", () => {
     expect(passed(await middleware(req("/api/stats", { headers: { authorization: basic("suman", "pä55") } })))).toBe(true);
     expect((await middleware(req("/api/stats", { headers: { authorization: basic("suman", "nope") } }))).status).toBe(401);
   });
+
+  it("ignores Basic credentials replayed by a browser, so Sign out sticks", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "pw");
+    const browser = { authorization: basic("admin", "pw"), "sec-fetch-site": "none" };
+    const home = await middleware(req("/", { headers: browser }));
+    expect(passed(home)).toBe(true); // stays on the home page instead of bouncing to /pipeline
+    expect(location(await middleware(req("/pipeline", { headers: browser })))).toContain("/?next=");
+    expect((await middleware(req("/api/stats", { headers: { ...browser, "sec-fetch-site": "same-origin" } }))).status).toBe(401);
+  });
 });
 
 describe("CSRF guard", () => {
