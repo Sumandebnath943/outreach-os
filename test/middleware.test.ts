@@ -11,10 +11,21 @@ const passed = (res: Response) => res.headers.get("x-middleware-next") === "1";
 afterEach(() => vi.unstubAllEnvs());
 
 describe("dashboard auth", () => {
-  it("keeps tracking and cron endpoints public", () => {
+  it("keeps tracking, cron and legal pages public", () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "pw");
     expect(passed(middleware(req("/api/track/open?l=x")))).toBe(true);
     expect(passed(middleware(req("/api/cron/process-queue", { method: "POST" })))).toBe(true);
+    expect(passed(middleware(req("/privacy-policy")))).toBe(true);
+    expect(passed(middleware(req("/terms/")))).toBe(true);
+    // only the exact pages — not anything that merely starts with the same name
+    expect(middleware(req("/terms-and-more")).status).toBe(401);
+    expect(middleware(req("/privacy-policy/../api/leads")).status).toBe(401);
+  });
+
+  it("stays public for legal pages even when production has no password", () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(passed(middleware(req("/privacy-policy")))).toBe(true);
   });
 
   it("requires Basic credentials when a password is set", () => {

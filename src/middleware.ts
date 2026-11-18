@@ -6,10 +6,11 @@ import { NextResponse, type NextRequest } from "next/server";
  *    open: without a password every protected route answers 503.
  *  - CSRF: browsers replay Basic credentials on cross-site requests, so state-changing requests
  *    must come from this origin.
- * Public by design: tracking endpoints (pixel, click, portfolio beacon) and the cron worker
- * (which checks its own CRON_SECRET bearer token).
+ * Public by design: tracking endpoints (pixel, click, portfolio beacon), the cron worker
+ * (which checks its own CRON_SECRET bearer token) and the privacy policy / terms pages that
+ * Google's OAuth consent screen links to.
  */
-const PUBLIC = [/^\/api\/track\//, /^\/api\/cron\//];
+const PUBLIC = [/^\/api\/track\//, /^\/api\/cron\//, /^\/privacy-policy\/?$/, /^\/terms\/?$/];
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function safeEqual(a: string, b: string): boolean {

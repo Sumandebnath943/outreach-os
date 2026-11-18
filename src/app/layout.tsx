@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { TopBar } from "@/components/TopBar";
-import { Toaster } from "@/components/ui";
 import "./globals.css";
 
 const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
@@ -13,14 +11,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/** Shell shared by the private dashboard and the public legal pages. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-bg text-fg">
-        <TopBar />
-        <main>{children}</main>
-        <Toaster />
-      </body>
+      <body className="min-h-screen bg-bg text-fg">{children}</body>
     </html>
   );
 }
