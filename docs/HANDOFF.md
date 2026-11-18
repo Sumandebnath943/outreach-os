@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **18 Nov 2026**, during the email-precheck upgrade and production end-to-end testing. The owner applied migration 014; schema verified. The owner authorized deleting all leads and testing with LIVE_LEAD_EMAIL. See docs/UPGRADE_014.md.
+Last updated: **18 Nov 2026**, after production end-to-end validation of upgrades 014–015. The owner applied both SQL migrations. CI/build and 153 tests passed. All original and test leads are removed; original settings restored. See docs/UPGRADE_014.md.
 
 ---
 
@@ -14,19 +14,19 @@ Last updated: **18 Nov 2026**, during the email-precheck upgrade and production 
 |---|---|
 | Repo | `github.com/Sumandebnath943/outreach-os`, branch `main` (the only branch; push to main) |
 | Production | `https://outreachos.houseofnamus.com` (Vercel, auto-deploys from `main`) |
-| Database | Supabase (free tier). Migrations **001–014 applied**, with 014 confirmed by the owner and verified by schema query on 18 Nov 2026 |
+| Database | Supabase (free tier). Migrations **001–015 applied**. 014 schema and 015 deletion/quota behavior verified in production on 18 Nov 2026 |
 | Scheduler | Supabase Cron (`009`): `outreachos-worker-weekdays` every 10 min Mon–Fri UTC, `outreachos-worker-weekends` hourly at weekends, `outreachos-cleanup` daily (`010`) |
 | Mode | **AUTO_PILOT**, daily cap 45, **warm-up on** (started 2026-11-18 → week 1 = 10/day, week 2 = 20, week 3 = 30, then 45) |
 | Holidays | `skip_holidays` on (US federal + India), out-of-office auto-resume on |
 | Gmail | Connected (OAuth, `gmail.send` + `gmail.readonly`) |
 | Telegram | Working: reply alerts and 09:30 IST digest |
 | Groq AI | Working: reply triage (`openai/gpt-oss-20b`) |
-| CI | GitHub Actions `CI` green on `f0c922f` (lint + types + 121 tests + build) |
-| Deploy | Vercel deployed `f0c922f`. Twelve read-only page/API checks passed, including Leads/details, Approvals, Pipeline, Imports, Stats and signed-out protection. Migration 013 schema verified (18 Nov) |
-| Tests | Local lint, typecheck, all **121 tests in 13 files** (89 unit + 32 simulation scenarios), and production build passed during this upgrade (final results below). `npm run simulate` runs only the 32 scenarios |
-| Leads in prod | **299 total: 295 real imports + 4 live-test leads.** The 308-row enriched CSV produced 295 unique valid leads: 9 duplicate rows and 4 Gmail contacts missing company names were skipped. All 295 stored records match the normalized CSV fields. Of the real leads, 294 are queued/approved and one is closed/bounced. |
-| First real send | Mistral's `jobs@` address returned a verified permanent SMTP **550 5.1.1 / account does not exist**. Auto-archive was correct. Today's 10-send warm-up cap includes 9 earlier live-test sends and this one bounced send. |
-| Connection audit | Gmail token has both required scopes; sender matches the connected account. Telegram token/chat and Groq credentials/model verified. Public home 200, signed-out pipeline redirects, protected API 401. Last worker run at audit: 19:40 IST. No worker or notification was triggered by the audit. |
+| CI | GitHub Actions `CI` green on `4fb44da` (lint + types + 153 tests + build) |
+| Deploy | Vercel deployed `4fb44da`. Real production send, tracking, positive reply, OOO/resume and cleanup verified. 21 functional check groups and 13 browser checks passed; see upgrade report |
+| Tests | Local lint, typecheck, all **153 tests in 14 files** (113 unit + 40 simulation scenarios), and production build passed during this upgrade (final results below). `npm run simulate` runs only the 40 scenarios |
+| Leads in prod | **0 active/archived leads, 0 Trash rows, 0 test import reports.** All 299 originals and all test fixtures were removed at the owner's request. The original bounce suppression remains. A private ignored local backup is available. |
+| Quota after testing | **22 actual sends today: 21 test + 1 original outreach (bounced).** This includes 12 new production test emails. Original 10/day warm-up cap is restored; deletion does not reset quota. Sent records retain minimal accounting with lead association/content removed. |
+| Production verification | Real Gmail sending/threading, signed click tracking, warm/cold branches, positive reply kill switch, OOO deferred resume/accelerated next touch, nurture, Telegram, import/approvals/paging/CRUD/auth, deletion and quota checks passed. Bounce/delay parsing is covered by automated simulations; production suppression was exercised with a controlled non-sending fixture. |
 
 ### Open watch item
 - The previous `oo` test and all other leads were removed at the owner's explicit request during upgrade 014. The old 24 Nov watch is cancelled; new production test results will replace it.
@@ -79,8 +79,8 @@ Last updated: **18 Nov 2026**, during the email-precheck upgrade and production 
 
 | # | Item | Owner | Notes |
 |---|---|---|---|
-| P1 | Complete upgrade 014 production tests and cleanup | agent | Owner explicitly authorized test sends and removal of all original/test leads. Restore original settings afterward. |
-| P2 | Complete source-data enrichment | owner | Import is complete. Four rejected contacts need company names (enriched CSV data rows 82, 94, 107, 171, excluding header). 254 imported contacts have no target opening or icebreaker; 213 use the Team greeting. Import validation does not verify mailbox existence. |
+
+| P2 | Re-upload/enrich source data when ready | owner | Original CSV audit: four contacts missing companies; 254 lack role opening/icebreaker and 213 use Team greeting. Built-in checks cannot confirm mailbox existence. Known bounced/unsubscribed addresses remain suppressed. |
 | P3 | Optional: 5-minute cron for faster alerts | owner (SQL) | `select cron.schedule('outreachos-worker-weekdays', '*/5 * * * 1-5', 'select public.oos_call_worker()');` |
 | P4 | Extend India festival dates beyond 2027 | agent | `src/lib/holidays.ts` (`INDIA_FESTIVALS`) before Dec 2027 |
 | P5 | Watch the first real sends: deliverability, bounces, replies | agent/owner | Analytics page; Telegram |
@@ -113,8 +113,8 @@ Last updated: **18 Nov 2026**, during the email-precheck upgrade and production 
 ```bash
 npm ci                    # install (CI uses this; see lockfile caveat)
 npm run dev               # local app at :3000 (needs .env.local)
-npm run check             # lint + typecheck + all 121 tests (incl. simulation) — must pass before every push
-npm run simulate          # 32-scenario end-to-end simulation → test-results/simulation-report.md
+npm run check             # lint + typecheck + all 153 tests (incl. simulation) — must pass before every push
+npm run simulate          # 40-scenario end-to-end simulation → test-results/simulation-report.md
 npm run build             # production build
 npm run live -- status    # live test leads (reads .env; sends only to plus-addresses of LIVE_LEAD_EMAIL)
 ```
@@ -154,4 +154,5 @@ npm install --package-lock-only
 | 2026-11-18 | (local upgrade) | Implemented all approved fixes except deferred email prechecks. Added migration 013 and nine simulation regressions plus a full delivery-notice unit regression covering scale, Trash, suppression, import reports, regional fairness and quota. Deploy only after owner applies migration. |
 | 2026-11-18 | `f0c922f` | Owner confirmed migration 013 and authorized push. CI and Vercel succeeded; twelve read-only production page/API checks and schema checks passed. Counts: 299 leads, 294 approved, zero pending, quota 9 test + 1 outreach = 10/10. No sends, approvals or live worker runs triggered. |
 | 2026-11-18 | (upgrade 014) | Built free prechecks and a light workspace based on reviewed Linear/Attio/Carbon guidance; owner selected light direction. 150 tests and production build pass. All 299 original leads removed after private backup; suppression retained. Production E2E validation in progress. |
+| 2026-11-18 | `8957fcd`, `4fb44da` | Deployed free prechecks/light workspace, then final dispatch guards and deletion quota fix. 153 tests + CI/build green; 12 real emails only to test-inbox aliases. Real positive/OOO replies, resumed touch, both T2 branches, four-touch threading, tracking, management, auth and Telegram verified. All original/test leads removed, original settings restored; quota 22/10 remains accurate after deletion. |
 | earlier | — | See `git log` |

@@ -30,3 +30,22 @@ The owner explicitly authorized removing all leads and production testing using 
 Local lint, types, 150 tests (37 sequence simulations) and production build passed before browser review. Isolated desktop/mobile browser checks passed; screenshots were inspected and remaining surface/header spacing corrections were applied. Final validation follows those corrections.
 
 The production cleanup review exposed that cascading deletion erased sent quota. Migration 015, applied by the owner, preserves sent accounting with no lead association while removing deleted message content and unsent drafts. The final suite has 153 tests, including deletion quota, final dispatch mode/approval recheck and unsubscribe precheck state. Production verification also covers the updated delete behavior and restores minimal accounting rows from the pre-reset private snapshot; original leads are not restored.
+
+## Completed production validation
+
+App commits `8957fcd` and `4fb44da` passed CI and Vercel deployment. Production testing used 56 imported test aliases plus short-lived manual fixtures, with 12 actual sends exclusively to aliases of LIVE_LEAD_EMAIL. Send scheduling was accelerated only for isolated tests; original settings were restored afterward.
+
+Verified through deployed endpoints and actual Gmail:
+
+- Import preview/deduplication/exclusions/history and exception CSV; Leads CSV export.
+- Real DNS checks; pending/blocked approval and send gates; 50-item scheduler batch; 25-item manual batch; exact totals and disjoint pages in Leads, Prechecks and Approvals.
+- Approve-all without dispatch, revoke, draft editing and approval reset; address corrections reset precheck through the database trigger.
+- Four real touches in one Gmail thread and automatic ghost archive. Real inbox opens correctly chose the warm branch; a separate controlled zero-engagement fixture verified the cold branch.
+- Signed click tracking, warm promotion and warm Touch 2; analytics and full details/history.
+- Owner's real positive reply stopped follow-ups and entered triage. Their real out-of-office reply scheduled automatic resume; its next touch was successfully sent after accelerating its due date.
+- Manual creation, duplicates, pause/unpause, nurture resurfacing, Trash, paused restore, delete guard and permanent delete.
+- Durable bounce suppression, resume/recreation/import blocks using a controlled non-sending fixture. No live provider hard bounce was deliberately induced; full DSN/delay classification and automatic Gmail bounce handling are exercised by the automated simulations.
+- Real Telegram test notification; unauthorized API, CSRF and input guards.
+- Thirteen live browser checks: public home, all seven management pages, four mobile layouts and genuine sign-in/out protection; zero page errors. Earlier isolated browser checks used 1,300 synthetic records.
+
+Final state verified at 2026-11-18 17:56 UTC: **zero leads, zero Trash, zero pending approvals/prechecks and zero test import reports**. Original Auto-Pilot, 45/day configured limit, 10/day warm-up cap, holidays, windows and pacing are restored. One original hard-bounce suppression remains; test suppressions were removed. Quota remains **22 actual sends: 21 test + 1 outreach, including 1 bounce**, after permanent deletion. The ten pre-reset send records were restored as minimal accounting only, with no lead association or message content. Private backups, scripts and screenshots remain under ignored `test-results/`; no credentials or private lead data were committed.
