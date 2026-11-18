@@ -28,11 +28,11 @@ insert into public.sequence_templates (role_track, touch_number, branch_variant,
 $t$Brand Marketing & AI Product roles — Suman Debnath$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}I'm Suman Debnath, a Senior Brand Marketing Manager with 9+ years in brand, digital and performance marketing, and for the last two years I've also been building AI products myself. I'm writing to ask whether {{company_name}} has, or expects to have, {{target_role_opening}} roles.
+{{custom_icebreaker}}I'm Suman Debnath. I'm looking for my next role and wanted to ask whether {{company_name}} has, or expects to have, {{target_role_opening}} roles. I bring 9+ years in brand, digital and performance marketing, including taking products from positioning through launch and growth, and for the last two years I've also been building AI products myself.
 
 What I'd bring:
 
-- Brand and growth leadership: at PIBM I lead a cross-functional team across digital marketing, brand design and web development, grew organic traffic across a 400-page web ecosystem, and ran multiple GTM launches 99%+ on time and on budget.
+- Brand, product and growth leadership: in my current role as Senior Brand Marketing Manager at PIBM I lead a cross-functional team across digital marketing, brand design and web development, grew organic traffic across a 400-page web ecosystem, and ran multiple GTM launches 99%+ on time and on budget.
 - Hands-on AI building: 21+ products shipped solo, including MIGI, a 46-agent operator OS guarded by 500+ automated eval checks and running 40–50 jobs a day for under $5 total, and ROASmind, an AI-native marketing OS unifying Meta, Google and LinkedIn ads.
 - The bridge between the two: GenAI creative pipelines I built cut design and web turnaround from weeks to hours.
 
@@ -50,9 +50,9 @@ Best regards,
 $t${{target_role_opening}} — Suman Debnath, 9+ yrs brand & growth$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}I'm Suman Debnath, Senior Brand Marketing Manager at PIBM, and I'm writing to ask whether {{company_name}} is hiring, now or soon, for {{target_role_opening}} roles.
+{{custom_icebreaker}}I'm Suman Debnath, a brand marketing leader with 9+ years in brand, digital and performance marketing. I'm looking for my next role and wanted to ask whether {{company_name}} is hiring, now or soon, for {{target_role_opening}} roles.
 
-Over 9+ years I've led brand, digital and performance marketing:
+In my current role as Senior Brand Marketing Manager at PIBM:
 
 - I lead a cross-functional team across digital marketing, brand design and web development, and manage the annual budgets.
 - I grew organic traffic across a 400-page web ecosystem.
@@ -74,9 +74,9 @@ Best regards,
 $t${{target_role_opening}} — Suman Debnath, marketer who builds with AI$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}I'm Suman Debnath, and I'm writing to ask about {{target_role_opening}} roles at {{company_name}}. Product marketing for AI is where my two tracks meet: 9+ years leading brand and growth marketing, and two years designing, building and shipping AI products myself.
+{{custom_icebreaker}}I'm Suman Debnath. I'm looking for my next role and wanted to ask about {{target_role_opening}} roles at {{company_name}}. I bring 9+ years of brand, product and growth marketing, taking products from positioning through launch and growth, and over the last two years I've also designed, built and shipped AI products myself. Product marketing for AI is exactly where those meet.
 
-- Go-to-market: as Senior Brand Marketing Manager at PIBM I've run multiple end-to-end launches (99%+ on time and on budget), lead a cross-functional team across digital, brand design and web, and grew organic traffic across a 400-page web ecosystem.
+- Product marketing and go-to-market: in my current role as Senior Brand Marketing Manager at PIBM I've handled products end to end, from positioning through launch and growth, run multiple end-to-end launches (99%+ on time and on budget), lead a cross-functional team across digital, brand design and web, and grown organic traffic across a 400-page web ecosystem.
 - AI products I built and positioned: MIGI, a 46-agent operator OS with a private RAG brain and 500+ automated eval checks, and ROASmind, an AI-native marketing OS for Meta, Google and LinkedIn ads.
 - I understand what I'd be marketing (Next.js, FastAPI, Supabase, LLM APIs, evals), so I can turn product capability into positioning that both engineers and buyers trust.
 
@@ -94,13 +94,12 @@ Best regards,
 $t${{target_role_opening}} — Suman Debnath, 21+ AI products shipped$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}I'm Suman Debnath, and I'm writing to ask about {{target_role_opening}} roles at {{company_name}}. Over the last two years I've designed, built and shipped 21+ AI products on my own, on top of 9+ years of brand and growth leadership, so I come to product from both the user side and the market side.
+{{custom_icebreaker}}I'm Suman Debnath. I'm looking for my next role and wanted to ask about {{target_role_opening}} roles at {{company_name}}. I bring 9+ years of product, brand and growth experience, taking products from positioning through launch and growth, and over the last two years I've designed, built and shipped 21+ AI products on my own. So I come to product from the user, the market and the build side.
 
+- Product and go-to-market: in my current role as Senior Brand Marketing Manager at PIBM I've handled products end to end, from positioning through launch and growth, run multiple end-to-end GTM launches (99%+ on time and on budget), and lead a cross-functional team across digital, design and web.
 - MIGI: a 46-agent autonomous operator OS with a multi-agent squad and private RAG brain, guarded by 500+ automated eval checks, running 40–50 jobs a day for under $5 total.
 - Models: I trained a 47M-parameter SLM from scratch (PentaCMD-47M, ~87% exact match on 299K pairs) and fine-tuned a coding model (Qdex-1.5B, HumanEval 1.2% → 42.1%).
 - Shipping responsibly: an audited Retail Banking RM Copilot that passes 38 security tests.
-
-As Senior Brand Marketing Manager at PIBM I also lead a cross-functional team and run GTM launches, so I know how a product has to land, not just how it's built.
 
 I'm based in Pune and open to roles across India, including relocation, as well as international remote roles.
 
@@ -128,7 +127,7 @@ Best regards,
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Bringing this back to the top of your inbox in case it got buried. In one line: 9+ years leading brand and growth marketing, plus 21+ AI products I've built and shipped myself.
+Bringing this back to the top of your inbox in case it got buried. In one line: 9+ years leading brand, product and growth marketing, plus 21+ AI products I've built and shipped myself.
 
 If {{company_name}} isn't hiring for {{target_role_opening}} roles right now, a one-line reply saying so, or the name of the right person, would really help.
 

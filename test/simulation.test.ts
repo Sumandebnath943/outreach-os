@@ -128,7 +128,7 @@ describe("end-to-end pipeline simulation", () => {
     // Copy & links (approved best-practice copy: short subject, ~95-word T1, one question)
     expect(h(0, "Subject")).toBe("AI Product Marketing Manager — Suman Debnath, marketer who builds with AI");
     expect(msgs[0].text).toMatch(/^Hi Suman,/);
-    expect(msgs[0].text).toContain("I'm writing to ask about AI Product Marketing Manager roles at Acme AI.");
+    expect(msgs[0].text).toContain("I'm looking for my next role and wanted to ask about AI Product Marketing Manager roles at Acme AI.");
     expect(msgs[0].text).toContain("Open to a 15-minute call? If someone else owns product marketing hiring, I'd be grateful for a pointer.");
     const words = (s: string) => s.replace(/\(?https?:\/\/\S+\)?/g, "").split(/\s+/).filter(Boolean).length;
     expect(words(msgs[0].text.split("\nBest regards,")[0])).toBeLessThanOrEqual(260); // body, excluding the signature
@@ -705,7 +705,7 @@ describe("end-to-end pipeline simulation", () => {
     const sim = new Sim("S23 · Touch 1 per role track", MON_0830_IST);
     const cases = [
       { tag: "brand", role: "Senior Brand Marketing Manager", track: "BRAND", subject: "Senior Brand Marketing Manager — Suman Debnath, 9+ yrs brand & growth", lead: "Senior Brand Marketing Manager at PIBM" },
-      { tag: "pmm", role: "AI Product Marketing Manager", track: "AI_PMM", subject: "AI Product Marketing Manager — Suman Debnath, marketer who builds with AI", lead: "Product marketing for AI is where my two tracks meet" },
+      { tag: "pmm", role: "AI Product Marketing Manager", track: "AI_PMM", subject: "AI Product Marketing Manager — Suman Debnath, marketer who builds with AI", lead: "Product marketing for AI is exactly where those meet" },
       { tag: "pm", role: "AI Product Manager", track: "AI_PM", subject: "AI Product Manager — Suman Debnath, 21+ AI products shipped", lead: "PentaCMD-47M" },
       { tag: "hybrid", role: "", track: "HYBRID_DEFAULT", subject: "Brand Marketing & AI Product roles — Suman Debnath", lead: "Senior Brand Marketing, AI Product Marketing or AI Product Manager roles" },
     ];
@@ -721,6 +721,12 @@ describe("end-to-end pipeline simulation", () => {
       expect(m.text).toContain("I'm based in Pune and open to roles across India, including relocation, as well as international remote roles.");
       expect(m.text).toContain("agentic-ready");
       expect(m.text).not.toMatch(/\{\{|\}\}/);
+      // the opening paragraph makes clear you're the candidate, and never names your employer
+      const opening = m.text.split("\n\n")[1];
+      expect(opening).toContain("I'm looking for my next role");
+      expect(opening).not.toContain("PIBM");
+      expect(opening).toContain("9+ years");
+      if (c.track === "AI_PM" || c.track === "AI_PMM") expect(opening).toMatch(/taking products from positioning through launch and growth/);
       writeFileSync(
         `test-results/t1-${c.track.toLowerCase()}.html`,
         `<!doctype html><meta charset="utf-8"><title>T1 ${c.track}</title><body style="margin:0;background:#fff"><div style="max-width:680px;margin:24px auto;padding:0 20px;font-family:Arial"><p style="color:#5f6368;font-size:13px;border-bottom:1px solid #e0e0e0;padding-bottom:10px"><b style="color:#202124;font-size:20px;font-weight:400">${sim.gmail.header(m, "Subject").replace(/</g, "&lt;")}</b><br>Suman Debnath → Priya · track ${c.track}</p>${m.html.replace(/<img[^>]*>/g, "")}</div></body>`,

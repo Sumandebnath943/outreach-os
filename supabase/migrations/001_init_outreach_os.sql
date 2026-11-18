@@ -133,11 +133,11 @@ insert into public.sequence_templates (role_track, touch_number, branch_variant,
 $t$Brand Marketing & AI Product roles — Suman Debnath$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}I'm Suman Debnath, a Senior Brand Marketing Manager with 9+ years in brand, digital and performance marketing, and for the last two years I've also been building AI products myself. I'm writing to ask whether {{company_name}} has, or expects to have, {{target_role_opening}} roles.
+{{custom_icebreaker}}I'm Suman Debnath. I'm looking for my next role and wanted to ask whether {{company_name}} has, or expects to have, {{target_role_opening}} roles. I bring 9+ years in brand, digital and performance marketing, including taking products from positioning through launch and growth, and for the last two years I've also been building AI products myself.
 
 What I'd bring:
 
-- Brand and growth leadership: at PIBM I lead a cross-functional team across digital marketing, brand design and web development, grew organic traffic across a 400-page web ecosystem, and ran multiple GTM launches 99%+ on time and on budget.
+- Brand, product and growth leadership: in my current role as Senior Brand Marketing Manager at PIBM I lead a cross-functional team across digital marketing, brand design and web development, grew organic traffic across a 400-page web ecosystem, and ran multiple GTM launches 99%+ on time and on budget.
 - Hands-on AI building: 21+ products shipped solo, including MIGI, a 46-agent operator OS guarded by 500+ automated eval checks and running 40–50 jobs a day for under $5 total, and ROASmind, an AI-native marketing OS unifying Meta, Google and LinkedIn ads.
 - The bridge between the two: GenAI creative pipelines I built cut design and web turnaround from weeks to hours.
 
@@ -167,7 +167,7 @@ Best regards,
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Bringing this back to the top of your inbox in case it got buried. In one line: 9+ years leading brand and growth marketing, plus 21+ AI products I've built and shipped myself.
+Bringing this back to the top of your inbox in case it got buried. In one line: 9+ years leading brand, product and growth marketing, plus 21+ AI products I've built and shipped myself.
 
 If {{company_name}} isn't hiring for {{target_role_opening}} roles right now, a one-line reply saying so, or the name of the right person, would really help.
 
