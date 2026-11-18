@@ -5,6 +5,7 @@ import {
   findUnresolved,
   mergeVars,
   previewLinks,
+  restampRefLabel,
   restampStage,
   stripImages,
   toHtml,
@@ -63,14 +64,14 @@ describe("toHtml / toPlainText", () => {
     const html = toHtml("Intro\n\n- one\n- two\n\nLink: {{tracked_portfolio_url}}", links, "https://app/px");
     expect(html).toContain("<ul");
     expect(html.match(/<li/g)).toHaveLength(2);
-    expect(html).toContain(`href="https://sumandebnath.houseofnamus.com/?ref=${ID}"`);
+    expect(html).toContain(`href="https://sumandebnath.houseofnamus.com/?oid=${ID}"`);
     expect(html).toContain(">sumandebnath.houseofnamus.com</a>");
     expect(html).toContain('<img src="https://app/px"');
     expect(stripImages(html)).not.toContain("<img");
   });
 
-  it("uses direct ?ref= URLs in the text part", () => {
-    expect(toPlainText("Resume: {{tracked_resume_url}}", links)).toBe(`Resume: https://sumandebnath.houseofnamus.com/resume?ref=${ID}`);
+  it("uses direct ?oid= URLs in the text part", () => {
+    expect(toPlainText("Resume: {{tracked_resume_url}}", links)).toBe(`Resume: https://sumandebnath.houseofnamus.com/resume?oid=${ID}`);
   });
 });
 
@@ -87,9 +88,9 @@ describe("labelled links and the shared signature", () => {
     const withLi = previewLinks(ID, "https://x.com", "https://x.com/resume", "https://www.linkedin.com/in/me");
     const merged = mergeVars("See {{tracked_portfolio_url|my portfolio}}.\n\n{{signature}}", L(), { signature: sig });
     const html = toHtml(merged, withLi);
-    expect(html).toContain(`<a href="https://x.com/?ref=${ID}" style="color:#1a73e8" target="_blank">my portfolio</a>`);
+    expect(html).toContain(`<a href="https://x.com/?oid=${ID}" style="color:#1a73e8" target="_blank">my portfolio</a>`);
     expect(html).toContain('target="_blank">LinkedIn</a>');
-    expect(toPlainText(merged, withLi)).toContain(`See my portfolio (https://x.com/?ref=${ID}).`);
+    expect(toPlainText(merged, withLi)).toContain(`See my portfolio (https://x.com/?oid=${ID}).`);
   });
 
   it("degrades to plain words when a link isn't configured, and escapes labels once", () => {
@@ -111,7 +112,8 @@ describe("UTM tagging", () => {
       utm_content: "outreach_active-t2a",
     });
     const url = new URL(withRef("https://sumandebnath.houseofnamus.com", ID, utm));
-    expect(url.searchParams.get("ref")).toBe(ID);
+    expect(url.searchParams.get("oid")).toBe(ID);
+    expect(url.searchParams.get("ref")).toBe("acme-ai-inc.zoe-o-neil.outreach-active-t2a"); // readable label for portfolio trackers
     expect(url.searchParams.get("utm_campaign")).toBe("acme-ai-inc");
   });
 
@@ -123,8 +125,10 @@ describe("UTM tagging", () => {
 });
 
 describe("url helpers", () => {
-  it("adds or replaces ?ref=", () => {
-    expect(withRef("https://x.com/a?ref=old&b=1", ID)).toBe(`https://x.com/a?ref=${ID}&b=1`);
+  it("puts the lead ID in ?oid= and drops any stale ?ref=", () => {
+    expect(withRef("https://x.com/a?ref=old&b=1", ID)).toBe(`https://x.com/a?b=1&oid=${ID}`);
+    expect(restampRefLabel("acme-ai.priya-sharma.outreach-active-t2a", "WARM_ENGAGED")).toBe("acme-ai.priya-sharma.warm-engaged-t2a");
+    expect(restampRefLabel("9c3b9bbe-4aee-43d5-b979-4cc16e87587d", "WARM_ENGAGED")).toBe("9c3b9bbe-4aee-43d5-b979-4cc16e87587d");
     expect(displayUrl("https://x.com/resume/")).toBe("x.com/resume");
   });
 });

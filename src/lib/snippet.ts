@@ -21,11 +21,12 @@ function Tracker() {
   const pathname = usePathname();
   const params = useSearchParams();
 
-  // Persist ?ref= so later pages and return visits are attributed to the same recruiter
+  // Persist the OutreachOS lead ID (?oid=, or ?ref= on older emails) so later pages and
+  // return visits are attributed to the same recruiter
   useEffect(() => {
-    const ref = params.get("ref");
-    if (ref && UUID.test(ref)) {
-      try { sessionStorage.setItem(KEY, ref); localStorage.setItem(KEY, ref); } catch {}
+    const id = [params.get("oid"), params.get("ref")].find((v) => v && UUID.test(v));
+    if (id) {
+      try { sessionStorage.setItem(KEY, id); localStorage.setItem(KEY, id); } catch {}
     }
   }, [params]);
 

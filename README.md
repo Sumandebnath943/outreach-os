@@ -6,7 +6,7 @@ It treats the job hunt like an outbound sales pipeline:
 
 - **CSV import:** bulk lead import with deduplication and automatic role-track assignment.
 - **Sending:** a 4-touch conditional sequence sent through Gmail (in the same thread) or Resend.
-- **Tracking:** email opens, link clicks, and portfolio browsing (`?ref=<lead_uuid>`).
+- **Tracking:** email opens, link clicks, and portfolio browsing (`?oid=<lead id>`, plus a readable `?ref=` label).
 - **Funnel:** an 8-stage state machine. Any reply detected in Gmail stops the sequence immediately.
 
 ```
@@ -199,10 +199,12 @@ Why every 10 minutes matters:
 ### 7. Portfolio telemetry
 Copy `docs/PORTFOLIO_SNIPPET.md` into the portfolio repo (Settings shows a copy with your URL filled in). Mount `<PortfolioTracker />` in `app/layout.tsx`. Then add the portfolio origin to `PORTFOLIO_ALLOWED_ORIGINS`.
 
-Every portfolio and résumé link carries `ref=<lead id>` and UTMs your site's own analytics can read:
+Every portfolio and résumé link carries these parameters, which your site's own analytics and visitor alerts can read:
 
 | Parameter | Value |
 |---|---|
+| `oid` | the OutreachOS lead ID (older emails used `ref` for this; those links still work) |
+| `ref` | a readable tag, `<company>.<person>.<stage>-<touch>`, e.g. `acme-ai.priya-sharma.warm-engaged-t2a`. Visitor trackers that label visits by `ref` show this, with no portfolio code change. The stage is re-stamped at the moment of the click |
 | `utm_source` | `outreachos` |
 | `utm_medium` | `email` |
 | `utm_campaign` | company, e.g. `acme-ai` |

@@ -138,7 +138,7 @@ describe("end-to-end pipeline simulation", () => {
     expect(msgs[0].html).toMatch(/>Portfolio<\/a> · <a [^>]+>Résumé<\/a> · <a [^>]+>LinkedIn<\/a>/);
     expect(msgs[0].html).not.toContain(">sumandebnath.houseofnamus.com<");
     expect(msgs[0].text).toContain("Marketer who builds with AI · 9+ yrs brand & growth · 21+ AI products shipped solo");
-    expect(msgs[0].text).toMatch(/Résumé \(https:\/\/sumandebnath\.houseofnamus\.com\/resume\?ref=[^)]+utm_content=outreach_active-t1\)/);
+    expect(msgs[0].text).toMatch(/Résumé \(https:\/\/sumandebnath\.houseofnamus\.com\/resume\?oid=[^)]+&ref=acme-ai\.suman-test\.outreach-active-t1&[^)]+utm_content=outreach_active-t1\)/);
     const hrefs = [...msgs[0].html.matchAll(/href="([^"]+)"/g)].map((m) => decodeURIComponent(m[1].replace(/&amp;/g, "&")));
     expect(hrefs).toHaveLength(4);
     expect(hrefs.every((h) => h.startsWith("https://outreachos.houseofnamus.com/api/track/click?"))).toBe(true);
@@ -161,7 +161,7 @@ describe("end-to-end pipeline simulation", () => {
       "4 touches sent T1 → T2B (cold, no engagement) → T3 → T4, only Mon–Fri at 10:00 IST",
       "Waits of 3 / 5 / 6 business days; archived as GHOSTED exactly 18 business days after T1",
       "All follow-ups in the same Gmail thread: In-Reply-To + References chain, “Re: <original subject>”",
-      "Links carry ?ref=<lead> and UTMs (acme-ai / suman-test / outreach_active-t1…t4); no phone number in the copy",
+      "Links carry ?oid=<lead>, a readable ?ref=acme-ai.suman-test.outreach-active-t1 label and UTMs (…t1…t4); no phone number in the copy",
       "Links show as words (“my portfolio”, signature “Portfolio · Résumé · LinkedIn”), never bare URLs; all 4 go through the click tracker",
       "Same 4-line signature on every touch; AI_PMM Touch 1 subject names the role and the person",
     ]);
@@ -177,7 +177,8 @@ describe("end-to-end pipeline simulation", () => {
     const landed = await sim.click("portfolio");
     expect(landed.origin).toBe("https://sumandebnath.houseofnamus.com");
     expect(Object.fromEntries(landed.searchParams)).toEqual({
-      ref: lead.id,
+      oid: lead.id, // OutreachOS lead ID
+      ref: "acme-ai.suman-test.outreach-active-t1", // readable tag for the portfolio's own visitor alerts
       utm_source: "outreachos",
       utm_medium: "email",
       utm_campaign: "acme-ai",
@@ -190,6 +191,7 @@ describe("end-to-end pipeline simulation", () => {
     await sim.portfolioView("/resume", 41);
     const again = await sim.click("portfolio");
     expect(again.searchParams.get("utm_content")).toBe("warm_engaged-t1"); // now warm
+    expect(again.searchParams.get("ref")).toBe("acme-ai.suman-test.warm-engaged-t1"); // label re-stamped too
 
     const warm = sim.lead();
     expect(warm.portfolio_pages_viewed).toEqual(["/agents/migi", "/resume"]);

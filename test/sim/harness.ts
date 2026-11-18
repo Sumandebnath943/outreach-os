@@ -279,7 +279,7 @@ export class Sim {
     await this.flushAfter();
     const to = new URL(res.headers.get("location")!);
     this.note(
-      `Click on ${kind} link (${ua === CHROME_UA ? "Chrome" : ua.slice(0, 45)}) → lands with \`utm_content=${to.searchParams.get("utm_content")}\`${this.outcome(email, before)}`,
+      `Click on ${kind} link (${ua === CHROME_UA ? "Chrome" : ua.slice(0, 45)}) → lands with \`ref=${to.searchParams.get("ref")}\` · \`utm_content=${to.searchParams.get("utm_content")}\`${this.outcome(email, before)}`,
     );
     return to;
   }

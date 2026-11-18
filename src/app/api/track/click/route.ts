@@ -2,10 +2,13 @@ import { after, NextResponse, type NextRequest } from "next/server";
 import { recordEngagement } from "@/lib/server/engagement";
 import { db, getSettings } from "@/lib/server/db";
 import { verifyClick } from "@/lib/server/tracking";
-import { restampStage } from "@/lib/render";
+import { restampRefLabel, restampStage } from "@/lib/render";
 import { UUID_RE } from "@/lib/utils";
 
-/** Stamps utm_content with the funnel stage the lead is in right now, i.e. where the click happened. */
+/**
+ * Stamps utm_content and the readable ref label with the funnel stage the lead is in right now,
+ * i.e. where the click happened. (Legacy links whose ref is the lead ID are left as they are.)
+ */
 async function withClickStage(dest: URL, leadId: string): Promise<URL> {
   const content = dest.searchParams.get("utm_content");
   if (!content || !UUID_RE.test(leadId)) return dest;
@@ -15,6 +18,8 @@ async function withClickStage(dest: URL, leadId: string): Promise<URL> {
     if (!stage) return dest;
     const out = new URL(dest);
     out.searchParams.set("utm_content", restampStage(content, stage));
+    const ref = out.searchParams.get("ref");
+    if (ref && !UUID_RE.test(ref)) out.searchParams.set("ref", restampRefLabel(ref, stage));
     return out;
   } catch {
     return dest; // never block the redirect on a lookup failure

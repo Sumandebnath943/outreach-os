@@ -1,22 +1,23 @@
-# Portfolio Telemetry Snippet
+# Portfolio Telemetry Snippet (optional)
 
-Drop this client component into the **sumandebnath.houseofnamus.com** repository so recruiter browsing
-sessions show up on the OutreachOS Kanban in real time.
+This optional client component reports page views and time-on-page back to OutreachOS, so they show in each lead's dossier.
+Your portfolio's own visitor alerts already work without it: every tracked link carries a readable `ref` label and UTM
+parameters (see the README).
 
-1. Save it as `components/PortfolioTracker.tsx` and replace `https://YOUR-OUTREACH-OS.vercel.app` with your
-   OutreachOS deployment URL (Settings → *Portfolio telemetry snippet* shows a copy with the URL pre-filled).
+1. Save it as `components/PortfolioTracker.tsx`. Replace `https://YOUR-OUTREACH-OS.vercel.app` with your OutreachOS URL.
+   Settings → *Portfolio telemetry snippet* shows a copy with the URL already filled in.
 2. Mount it once inside the root `app/layout.tsx` body: `<PortfolioTracker />`.
-3. Make sure the portfolio origin (and its `www.` variant, if you serve one) is listed in OutreachOS
-   `PORTFOLIO_ALLOWED_ORIGINS`.
+3. Make sure the portfolio origin, and its `www.` variant if you serve one, is listed in OutreachOS `PORTFOLIO_ALLOWED_ORIGINS`.
 
-**How it works:** every tracked email link lands on `/?ref=<lead_uuid>`. The component stores the ref in
-`sessionStorage`/`localStorage`, then on each route change sends a `view` beacon (counts the page and promotes the
-lead to WARM_ENGAGED). Whenever the tab is hidden, the route changes or the page unloads it sends a `leave` beacon
-carrying the cumulative *visible* time on that page as `durationSec` (shown in the dossier as "Viewed /agents/migi
-for 84s"). Beacons use `text/plain` so no CORS preflight is needed, and visitors without a ref are never tracked.
+**How it works:**
+- Every tracked email link carries the lead ID as `?oid=<lead id>`. Older emails used `?ref=<lead id>`; both are accepted.
+- The component stores that ID, then sends a `view` beacon on each route change. That counts the page and promotes the lead to WARM_ENGAGED.
+- When the tab is hidden, the route changes or the page unloads, it sends a `leave` beacon with the cumulative visible time.
+- Beacons use `text/plain`, so no CORS preflight is needed.
+- Visitors without a lead ID are never tracked.
 
-> Testing tip: clicking your own tracked link stores that lead's ref in your browser. Clear the `oos_ref` key from
-> localStorage afterwards (or test in a private window) so your own browsing is not attributed to the recruiter.
+> Testing tip: clicking your own tracked link stores that lead's ID in your browser. Clear the `oos_ref` key from
+> localStorage afterwards, or test in a private window.
 
 ```tsx
 "use client";
@@ -40,11 +41,12 @@ function Tracker() {
   const pathname = usePathname();
   const params = useSearchParams();
 
-  // Persist ?ref= so later pages and return visits are attributed to the same recruiter
+  // Persist the OutreachOS lead ID (?oid=, or ?ref= on older emails) so later pages and
+  // return visits are attributed to the same recruiter
   useEffect(() => {
-    const ref = params.get("ref");
-    if (ref && UUID.test(ref)) {
-      try { sessionStorage.setItem(KEY, ref); localStorage.setItem(KEY, ref); } catch {}
+    const id = [params.get("oid"), params.get("ref")].find((v) => v && UUID.test(v));
+    if (id) {
+      try { sessionStorage.setItem(KEY, id); localStorage.setItem(KEY, id); } catch {}
     }
   }, [params]);
 

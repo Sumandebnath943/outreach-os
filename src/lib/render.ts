@@ -81,15 +81,45 @@ export function findUnresolved(text: string): string[] {
   return [...out];
 }
 
+/**
+ * Query parameter carrying the OutreachOS lead ID on portfolio/résumé links. (Older emails used
+ * `ref` for it; links already sent keep working, and the portfolio snippet accepts both.)
+ */
+export const LEAD_ID_PARAM = "oid";
+
+/**
+ * Tags a portfolio/résumé link: `oid=<lead id>` for OutreachOS, plus — when UTMs are given — a
+ * human-readable `ref` label (company.person.stage-touch) that portfolio visitor trackers show
+ * as the visit's tag, and the utm_* parameters.
+ */
 export function withRef(base: string, leadId: string, utm?: Utm): string {
   try {
     const u = new URL(base);
-    u.searchParams.set("ref", leadId);
-    if (utm) for (const [k, v] of Object.entries(utm)) if (v) u.searchParams.set(k, v);
+    u.searchParams.delete("ref");
+    u.searchParams.set(LEAD_ID_PARAM, leadId);
+    if (utm) {
+      u.searchParams.set("ref", refLabel(utm));
+      for (const [k, v] of Object.entries(utm)) if (v) u.searchParams.set(k, v);
+    }
     return u.toString();
   } catch {
-    return `${base}${base.includes("?") ? "&" : "?"}ref=${encodeURIComponent(leadId)}`;
+    return `${base}${base.includes("?") ? "&" : "?"}${LEAD_ID_PARAM}=${encodeURIComponent(leadId)}`;
   }
+}
+
+/** "acme-ai" + "priya-sharma" + "warm_engaged-t2a" → "acme-ai.priya-sharma.warm-engaged-t2a" */
+export function refLabel(utm: Pick<Utm, "utm_campaign" | "utm_term" | "utm_content">): string {
+  return [utm.utm_campaign, utm.utm_term, utm.utm_content.replace(/_/g, "-")].join(".");
+}
+
+/** Re-stamps the stage in a ref label (last segment), keeping company, person and touch. */
+export function restampRefLabel(label: string, stage: string): string {
+  const parts = label.split(".");
+  const last = parts.at(-1) ?? "";
+  const touch = last.split("-").pop() ?? "";
+  if (parts.length < 3 || !/^t\d[ab]?$/.test(touch)) return label;
+  parts[parts.length - 1] = `${stage.toLowerCase().replace(/_/g, "-")}-${touch}`;
+  return parts.join(".");
 }
 
 // ── UTM tagging ──────────────────────────────────────────────────────────────
