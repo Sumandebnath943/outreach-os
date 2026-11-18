@@ -1,5 +1,7 @@
 # OutreachOS — Project Bible
 
+> **Upgrade note (18 Nov 2026):** the local lead-management upgrade supersedes the older route, approval UI and test-count descriptions below. Read `docs/UPGRADE_013.md` and `docs/HANDOFF.md` first. It requires migration 013 before deployment; email prechecks are deferred.
+
 > The product book: what OutreachOS is, why it exists, how every part works, and why it was built that way.
 > Last revised: 18 Nov 2026 (state at commit `dfc5aaa` and later; see `docs/HANDOFF.md` for the running log).
 

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { gmail_v1 } from "@googleapis/gmail";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { countSentSince, db, getSettings, logEvent, must, updateLead } from "./db";
+import { suppression } from "./lead-query";
 import { env } from "./env";
 import { checkInbound, gmailClient, isGmailAuthError, sendViaGmail, type ReplyCheck } from "./gmail";
 import { analyzeReply } from "./groq";
@@ -166,6 +167,10 @@ async function oooResumeAt(lead: Lead, insight: ReplyInsight, receivedAt: Date, 
 
 export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: string): Promise<"REPLY" | "BOUNCE" | null> {
   if (result.kind === "NONE") return null;
+  const fresh = must(await db().from("leads").select("*").eq("id", lead.id).maybeSingle(), "recheck inbound lead") as Lead | null;
+  if (!fresh || fresh.deleted_at) return null;
+  if (!SENDABLE_STAGES.includes(fresh.funnel_stage) && !(fresh.funnel_stage === "CLOSED_ARCHIVE" && fresh.sub_stage === "GHOSTED")) return null;
+  lead = fresh;
   await db().from("email_logs").delete().eq("lead_id", lead.id).eq("status", "QUEUED_FOR_APPROVAL");
 
   if (result.kind === "REPLY") {
@@ -181,6 +186,7 @@ export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: str
       senderName: settings.sender_name,
       portfolioUrl: settings.portfolio_base_url,
     });
+    if (insight.intent === "UNSUBSCRIBE") must(await db().from("suppressed_addresses").upsert({ email: lead.email.toLowerCase(), reason: "Unsubscribed" }, { onConflict: "email" }).select("email"), "suppress unsubscribe");
     const late = lead.funnel_stage === "CLOSED_ARCHIVE";
     const resumeAt = late ? null : await oooResumeAt(lead, insight, receivedAt, settings, await loadTemplates());
     const replyFields = {
@@ -249,7 +255,7 @@ export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: str
     .order("sent_at", { ascending: false })
     .limit(1);
   const lastId = (last.data as { id: string }[] | null)?.[0]?.id;
-  if (lastId) await db().from("email_logs").update({ status: "BOUNCED", error: result.snippet.slice(0, 500) }).eq("id", lastId);
+  if (lastId) await db().from("email_logs").update({ status: "BOUNCED", error: (result.reason || result.snippet).slice(0, 2000) }).eq("id", lastId);
   return "BOUNCE";
 }
 
@@ -341,6 +347,9 @@ export async function dispatchTouch(
   templates: SequenceTemplate[],
   gmail: gmail_v1.Gmail | null,
 ): Promise<EmailLog> {
+  if (lead.deleted_at || await suppression(lead.email)) throw new SendError("Lead is deleted or address is blocked", "HARD_BOUNCE");
+  const current = must(await db().from("leads").select("deleted_at, sequence_active, approval_status, current_touch").eq("id", lead.id).maybeSingle(), "verify current lead") as Lead | null;
+  if (!current || current.deleted_at || !current.sequence_active || current.approval_status === "PAUSED" || current.current_touch !== lead.current_touch) throw new Error("Lead changed before sending; dispatch cancelled");
   const draft = await composeNextTouch(lead, templates, undefined, settings.email_signature);
   const { touch, variant, template } = draft;
 
@@ -418,6 +427,7 @@ export async function dispatchTouch(
         .upsert({
           id: logId,
           lead_id: lead.id,
+          is_test: lead.is_test ?? false,
           touch_number: touch,
           branch_variant: variant,
           subject,
@@ -461,6 +471,7 @@ async function claimLead(lead: Lead, mode: ExecutionMode): Promise<Lead | null> 
     .update({ next_touch_due_at: new Date(Date.now() + CLAIM_MINUTES * 60_000).toISOString() })
     .eq("id", lead.id)
     .eq("sequence_active", true)
+    .is("deleted_at", null)
     .eq("current_touch", lead.current_touch)
     .in("funnel_stage", SENDABLE_STAGES)
     .lte("next_touch_due_at", nowIso);
@@ -508,7 +519,7 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
   // 1 ─ Resurface nurture leads whose re-engage date has arrived.
   const nurture = await db()
     .from("leads")
-    .select("*")
+    .select("*").is("deleted_at", null)
     .eq("funnel_stage", "NURTURE_LATER")
     .lte("reengage_at", now.toISOString());
   for (const lead of (nurture.data as Lead[] | null) ?? []) {
@@ -527,20 +538,21 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
     const [active, ghosted] = await Promise.all([
       db()
         .from("leads")
-        .select("*")
+        .select("*").is("deleted_at", null)
         .eq("sequence_active", true)
         .gte("current_touch", 1)
         .in("funnel_stage", SENDABLE_STAGES)
-        .order("next_touch_due_at", { ascending: true, nullsFirst: false }),
+        .order("last_reply_checked_at", { ascending: true, nullsFirst: true }).order("id").limit(300),
       db()
         .from("leads")
-        .select("*")
+        .select("*").is("deleted_at", null)
         .eq("funnel_stage", "CLOSED_ARCHIVE")
         .eq("sub_stage", "GHOSTED")
         .gte("archived_at", addCalendarDays(now, -LATE_REPLY_WINDOW_DAYS).toISOString())
-        .order("archived_at", { ascending: false }),
+        .order("last_reply_checked_at", { ascending: true, nullsFirst: true }).order("id").limit(300),
     ]);
-    const leads = [...(must(active, "load active leads") as Lead[]), ...(must(ghosted, "load ghosted leads") as Lead[])];
+    const leads = [...(must(active, "load active leads") as Lead[]), ...(must(ghosted, "load ghosted leads") as Lead[])].sort((a, b) =>
+      (a.last_reply_checked_at ? Date.parse(a.last_reply_checked_at) : 0) - (b.last_reply_checked_at ? Date.parse(b.last_reply_checked_at) : 0) || a.id.localeCompare(b.id));
     const firstSent = await firstSentAt(leads.map((l) => l.id));
     await pool(
       leads,
@@ -550,11 +562,12 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
         try {
           const outcome = await syncInbound(gmail, lead, settings.sender_email, firstSent.get(lead.id));
           report.repliesChecked++;
+          await db().from("leads").update({ last_reply_checked_at: new Date().toISOString() }).eq("id", lead.id);
           if (outcome === "REPLY") report.repliesDetected++;
           if (outcome === "BOUNCE") report.bounces++;
         } catch (e) {
           if (isGmailAuthError(e)) gmailAuthFailed = true;
-          else console.error("[queue] reply check failed", lead.email, e);
+          else { console.error("[queue] reply check failed", lead.email, e); await db().from("leads").update({ last_reply_checked_at: new Date().toISOString() }).eq("id", lead.id); }
         }
       },
       started + budgetMs * 0.6,
@@ -572,7 +585,7 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
   // 3 ─ Auto-archive ghosted leads (Touch 4 sent, archive window elapsed).
   const ghosts = await db()
     .from("leads")
-    .select("*")
+    .select("*").is("deleted_at", null)
     .eq("sequence_active", true)
     .gte("current_touch", 4)
     .in("funnel_stage", SENDABLE_STAGES)
@@ -608,14 +621,17 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
   }
 
   // 5 ─ Due touches inside the recipient's business-hours window.
+  const openRegions = (["INDIA", "US", "GLOBAL"] as const).filter(g => isInSendWindow(g, settings));
+  if (!openRegions.length) return report;
   let q = db()
     .from("leads")
-    .select("*")
+    .select("*").is("deleted_at", null)
+    .in("geo_region", [...openRegions])
     .eq("sequence_active", true)
     .lt("current_touch", 4)
     .in("funnel_stage", SENDABLE_STAGES)
     .lte("next_touch_due_at", new Date().toISOString())
-    .order("next_touch_due_at", { ascending: true })
+    .order("next_touch_due_at", { ascending: true }).order("id")
     .limit(300);
   q = settings.execution_mode === "APPROVAL_GATE" ? q.eq("approval_status", "APPROVED") : q.neq("approval_status", "PAUSED");
   const due = must(await q, "load due leads") as Lead[];

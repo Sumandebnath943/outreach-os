@@ -64,6 +64,9 @@ export async function updateLead(
 ): Promise<Lead> {
   const res = await db().from("leads").update(patch).eq("id", lead.id).select("*").single();
   const updated = must(res, "update lead") as Lead;
+  if (updated.sub_stage === "BOUNCED") {
+    must(await db().from("suppressed_addresses").upsert({ email: updated.email.toLowerCase(), reason: "Hard bounce" }, { onConflict: "email" }).select("email"), "suppress bounced address");
+  }
   if (patch.funnel_stage && patch.funnel_stage !== lead.funnel_stage) {
     await logEvent(lead.id, "STAGE_CHANGE", {
       from: lead.funnel_stage,

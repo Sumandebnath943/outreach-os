@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { Pagination } from "../LeadFilters";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -35,6 +37,10 @@ import { cn, fullName, relTime } from "@/lib/utils";
 import { Badge, Button, Input, Label, Select, Textarea, toast } from "../ui";
 
 interface Dossier {
+  latestReply: TrackingEvent | null;
+  deliveryFailure: string | null;
+  eventsTotal: number;
+  emailsTotal: number;
   lead: Lead;
   emails: EmailLog[];
   events: TrackingEvent[];
@@ -133,12 +139,16 @@ function describe(ev: TrackingEvent, logs: EmailLog[]): { icon: React.ReactNode;
   }
 }
 
-export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {
-  const { data, reload } = usePoll<Dossier>(`/api/leads/${leadId}`, 15000);
+export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: string; onClose: () => void; embedded?: boolean }) {
+  const [eventsPage, setEventsPage] = useState(1);
+  const [emailsPage, setEmailsPage] = useState(1);
+  const { data, reload, error } = usePoll<Dossier>(`/api/leads/${leadId}?eventsPage=${eventsPage}&emailsPage=${emailsPage}`, 15000);
   const [tab, setTab] = useState<"thread" | "timeline" | "details">("timeline");
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setFormState] = useState<Partial<Lead>>({});
   const [dirty, setDirty] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<string | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
   const setForm = (next: Partial<Lead>) => {
     setFormState(next);
     setDirty(true);
@@ -171,10 +181,10 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
   }
 
   async function remove() {
-    if (!data || !confirm(`Delete ${data.lead.email} and all its history? This cannot be undone.`)) return;
+    if (!data || !confirm(`Move ${data.lead.email} to Trash? Sending stops immediately; restore it within 30 days.`)) return;
     try {
       await api(`/api/leads?id=${leadId}`, { method: "DELETE" });
-      toast("Lead deleted");
+      toast("Lead moved to Trash");
       broadcastRefresh();
       onClose();
     } catch (e) {
@@ -185,7 +195,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
   const lead = data?.lead;
   const events = data?.events ?? [];
   // the latest reply's own thread (a reply may arrive as a brand-new email, outside the outreach thread)
-  const lastReply = events.find((e) => e.event_type === "REPLY_RECEIVED");
+  const lastReply = data?.latestReply ?? events.find((e) => e.event_type === "REPLY_RECEIVED");
   const replyLinkId =
     (lastReply?.metadata.gmailThreadId as string | undefined) ?? (lastReply?.metadata.gmailMessageId as string | undefined) ?? lead?.gmail_thread_id ?? null;
   const emails = data?.emails ?? [];
@@ -197,15 +207,17 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
         : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onMouseDown={onClose}>
+    <div className={embedded ? "mx-auto max-w-5xl px-3 py-5" : "fixed inset-0 z-50 flex justify-end bg-black/50"} onMouseDown={embedded ? undefined : onClose}>
       <aside
-        className="animate-slide-in flex h-full w-full max-w-[640px] flex-col border-l border-line bg-bg shadow-2xl"
+        className={embedded ? "flex w-full flex-col rounded-lg border border-line bg-bg" : "animate-slide-in flex h-full w-full max-w-[640px] flex-col border-l border-line bg-bg shadow-2xl"}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {!lead ? (
-          <div className="p-6 text-sm text-dim">Loading dossier…</div>
+          <div className="p-6 text-sm text-dim">{error ?? "Loading dossier…"}</div>
         ) : (
           <>
+            {lead.deleted_at && <div className="border-b border-line bg-amber-500/10 p-4 text-sm text-amber-200">In Trash. Sending is stopped. <Link className="underline" href="/leads">Restore from Leads → Trash</Link></div>}
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-2"><Link className="mr-auto text-sm text-sky-300" href={embedded ? "/leads" : `/leads/${leadId}`}>{embedded ? "← All leads" : "Open full details ↗"}</Link><Button variant="danger" size="sm" disabled={!!lead.deleted_at} onClick={remove}>Move to Trash</Button></div>
             {/* header */}
             <div className="border-b border-line px-6 py-4">
               <div className="flex items-start justify-between gap-4">
@@ -272,7 +284,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
 
             <div className="flex-1 overflow-y-auto">
               {/* stage + sequence control */}
-              <section className="grid grid-cols-2 gap-4 border-b border-line px-6 py-4">
+              <section className={cn("grid grid-cols-2 gap-4 border-b border-line px-6 py-4", lead.deleted_at && "pointer-events-none opacity-50")}>
                 <div>
                   <Label>Funnel stage</Label>
                   <Select
@@ -410,11 +422,12 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                 )}
               </section>
 
+              {data?.deliveryFailure && <div className="mx-6 my-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><strong>Delivery problem</strong><p className="mt-1 whitespace-pre-wrap">{diagnosis ?? data?.deliveryFailure}</p>{lead.sub_stage === "BOUNCED" && <Button size="sm" className="mt-2" loading={diagnosing} onClick={async () => { setDiagnosing(true); try { const result = await api<{ reason: string }>(`/api/leads/${leadId}/delivery`); setDiagnosis(result.reason); } catch (e) { toast((e as Error).message, "err"); } finally { setDiagnosing(false); } }}>Read full delivery notice</Button>}</div>}
               {/* tabs */}
               <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-bg px-6 pt-2">
                 {(
                   [
-                    ["timeline", `Telemetry · ${events.length}`],
+                    ["timeline", `Telemetry · ${data?.eventsTotal ?? events.length}`],
                     ["thread", `Thread · ${emails.filter((e) => e.status !== "QUEUED_FOR_APPROVAL").length}`],
                     ["details", "Details & Notes"],
                   ] as const
@@ -433,6 +446,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
               </div>
 
               <div className="px-6 py-4">
+                {tab !== "details" && <Pagination fixedSize page={tab === "timeline" ? eventsPage : emailsPage} pageSize={25} total={tab === "timeline" ? data?.eventsTotal ?? 0 : data?.emailsTotal ?? 0} onPage={tab === "timeline" ? setEventsPage : setEmailsPage} onSize={() => {}} />}
                 {tab === "timeline" && (
                   <ol className="relative space-y-3 border-l border-line pl-4">
                     {events.length === 0 && <li className="text-sm text-dim">No telemetry yet.</li>}
@@ -536,7 +550,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                     )}
                     <div className="col-span-2 flex items-center justify-between pt-2">
                       <Button variant="danger" size="sm" onClick={remove}>
-                        <Trash2 className="h-3 w-3" /> Delete lead
+                        <Trash2 className="h-3 w-3" /> Move to Trash
                       </Button>
                       <div className="flex items-center gap-2">
                         {dirty && (
@@ -546,7 +560,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                         )}
                       <Button
                         variant="primary"
-                        disabled={!dirty}
+                        disabled={!dirty || !!lead.deleted_at}
                         loading={busy === "Details saved"}
                         onClick={() =>
                           patch(

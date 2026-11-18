@@ -20,6 +20,7 @@ import { Button, Metric, toast } from "./ui";
 
 const NAV = [
   { href: "/pipeline", label: "Pipeline" },
+  { href: "/leads", label: "Leads" },
   { href: "/approvals", label: "Approvals" },
   { href: "/analytics", label: "Analytics" },
   { href: "/import", label: "Import" },
@@ -76,14 +77,14 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
-      <div className="flex h-12 items-center gap-4 border-b border-line px-5 lg:gap-6">
+      <div className="flex min-h-12 flex-wrap items-center gap-3 py-2 border-b border-line px-5 lg:gap-6">
         <Link href="/pipeline" className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded border border-line bg-card">
             <Activity className="h-3.5 w-3.5" />
           </div>
           <span className="text-sm font-semibold tracking-tight">OutreachOS</span>
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto">
           {NAV.map((n) => {
             const active = pathname.startsWith(n.href);
             return (
@@ -153,15 +154,18 @@ export function TopBar() {
           <Metric
             label="Today's Quota"
             value={s ? s.sentToday : "—"}
-            sub={s ? `/ ${s.dailyLimit}${s.warmupWeek ? ` · warm-up wk ${s.warmupWeek}` : ""}` : undefined}
+            sub={s ? `/ ${s.dailyLimit}` : undefined}
             tone={s && s.sentToday >= s.dailyLimit ? "text-rose-300" : undefined}
           />
           <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-line">
             <div className={cn("h-full", quotaPct >= 100 ? "bg-rose-400" : "bg-fg")} style={{ width: `${quotaPct}%` }} />
           </div>
-          <div className="mt-1 truncate font-mono text-[10px] text-dim">
-            run {relTime(s?.lastQueueRunAt)} · next slot {s?.nextDispatchAt && new Date(s.nextDispatchAt) > new Date() ? relTime(s.nextDispatchAt) : "open"}
-          </div>
+
+        </div>
+        <div className="col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-2 text-[11px] text-muted md:col-span-6">
+          <span>{s?.warmupWeek ? `Warm-up week ${s.warmupWeek}` : "Daily send quota"}</span>
+          {s?.quotaBreakdown && <span>{s.quotaBreakdown.outreach} outreach + {s.quotaBreakdown.test} test sends · {s.quotaBreakdown.bounced} of these bounced</span>}
+          <span className="md:ml-auto">Worker {relTime(s?.lastQueueRunAt)} · next slot {s?.nextDispatchAt && new Date(s.nextDispatchAt) > new Date() ? relTime(s.nextDispatchAt) : "open"}</span>
         </div>
       </div>
     </header>

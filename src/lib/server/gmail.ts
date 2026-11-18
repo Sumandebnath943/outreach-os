@@ -1,7 +1,7 @@
 import "server-only";
 import { auth as gauth, gmail as gmailApi, type gmail_v1 } from "@googleapis/gmail";
 import { env } from "./env";
-import { classifyDsn, decodeEntities, isAuthErrorMessage } from "../signals";
+import { classifyDsn, decodeEntities, deliveryFailureReason, isAuthErrorMessage } from "../signals";
 import type { Lead, SystemSettings } from "../types";
 
 export const GMAIL_SCOPES = [
@@ -67,7 +67,7 @@ export async function sendViaGmail(
 export type ReplyCheck =
   | { kind: "NONE" }
   | { kind: "REPLY"; snippet: string; at: string; from: string; gmailMessageId: string; gmailThreadId: string | null; body?: string }
-  | { kind: "BOUNCE"; snippet: string; at: string };
+  | { kind: "BOUNCE"; snippet: string; at: string; reason?: string };
 
 const BOUNCE_RE = /mailer-daemon|postmaster|mail delivery (sub)?system/i;
 
@@ -143,9 +143,10 @@ export async function checkInbound(
         if (addressOf(from) === me) continue;
         const snippet = decodeEntities(msg.snippet ?? "");
         if (BOUNCE_RE.test(from)) {
+          const detail = await fetchMessageText(gmail, msg.id!);
           // a "still retrying" delay notice is not a bounce — keep looking
-          if (classifyDsn(header(msg, "Subject") ?? "", snippet) === "DELAY") continue;
-          return { kind: "BOUNCE", snippet, at: toIso(msg.internalDate) };
+          if (classifyDsn(header(msg, "Subject") ?? "", detail || snippet) === "DELAY") continue;
+          return { kind: "BOUNCE", snippet, at: toIso(msg.internalDate), reason: deliveryFailureReason(detail || snippet) };
         }
         return {
           kind: "REPLY",
@@ -197,8 +198,9 @@ export async function checkInbound(
     const msg = await gmail.users.messages.get({ userId: "me", id: hitDsn.id, format: "metadata", metadataHeaders: ["Subject"] });
     if (!isAfter(msg.data.internalDate, since)) break;
     const snippet = decodeEntities(msg.data.snippet ?? "");
-    if (classifyDsn(header(msg.data, "Subject") ?? "", snippet) === "FAILURE") {
-      return { kind: "BOUNCE", snippet, at: toIso(msg.data.internalDate) };
+    const detail = await fetchMessageText(gmail, hitDsn.id);
+    if (classifyDsn(header(msg.data, "Subject") ?? "", detail || snippet) === "FAILURE") {
+      return { kind: "BOUNCE", snippet, at: toIso(msg.data.internalDate), reason: deliveryFailureReason(detail || snippet) };
     }
   }
 

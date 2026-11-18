@@ -18,7 +18,7 @@ export const Button = forwardRef<
         "inline-flex items-center justify-center gap-1.5 rounded-md border font-medium whitespace-nowrap transition-colors select-none",
         "disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500",
         size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
-        variant === "primary" && "border-fg bg-fg text-bg hover:bg-zinc-200",
+        variant === "primary" && "border-emerald-300 bg-emerald-300 text-slate-950 hover:bg-emerald-200",
         variant === "outline" && "border-line bg-card text-fg hover:border-line-strong hover:bg-raised",
         variant === "ghost" && "border-transparent text-muted hover:bg-raised hover:text-fg",
         variant === "danger" && "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20",

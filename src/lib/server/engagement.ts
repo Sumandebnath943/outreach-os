@@ -30,6 +30,8 @@ export async function recordEngagement(
   opts: { logId?: string | null; page?: string | null; userAgent?: string | null; metadata?: Record<string, unknown> } = {},
 ): Promise<Lead | null> {
   if (!UUID_RE.test(leadId)) return null;
+  const current = await db().from("leads").select("deleted_at").eq("id", leadId).maybeSingle();
+  if (!current.data || current.data.deleted_at) return null;
   let logId = opts.logId && UUID_RE.test(opts.logId) ? opts.logId : null;
 
   if (kind !== "view") {

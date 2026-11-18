@@ -85,7 +85,7 @@ async function ensureLead(tag: string): Promise<Lead> {
   if (!n.ok) throw new Error(n.error);
   const res = await db()
     .from("leads")
-    .insert({ ...n.lead, next_touch_due_at: new Date().toISOString(), notes: "OutreachOS live test lead — safe to delete" })
+    .insert({ ...n.lead, is_test: true, next_touch_due_at: new Date().toISOString(), notes: "OutreachOS live test lead — safe to delete" })
     .select("*")
     .single();
   const lead = must(res, "create test lead") as Lead;

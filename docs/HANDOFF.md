@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked against the code).
+Last updated: **18 Nov 2026**, after implementing and testing the lead-management and queue upgrade. The owner confirmed migration 013 ran successfully and authorized pushing to main; deployment verification is next.
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked agains
 |---|---|
 | Repo | `github.com/Sumandebnath943/outreach-os`, branch `main` (the only branch; push to main) |
 | Production | `https://outreachos.houseofnamus.com` (Vercel, auto-deploys from `main`) |
-| Database | Supabase (free tier). Migrations **001–012 all applied** by the owner |
+| Database | Supabase (free tier). Migrations **001–013 applied**, with 013 confirmed by the owner on 18 Nov 2026 |
 | Scheduler | Supabase Cron (`009`): `outreachos-worker-weekdays` every 10 min Mon–Fri UTC, `outreachos-worker-weekends` hourly at weekends, `outreachos-cleanup` daily (`010`) |
 | Mode | **AUTO_PILOT**, daily cap 45, **warm-up on** (started 2026-11-18 → week 1 = 10/day, week 2 = 20, week 3 = 30, then 45) |
 | Holidays | `skip_holidays` on (US federal + India), out-of-office auto-resume on |
@@ -23,8 +23,10 @@ Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked agains
 | Groq AI | Working: reply triage (`openai/gpt-oss-20b`) |
 | CI | GitHub Actions `CI` green on `87b35a0` (lint + types + 110 tests + build) |
 | Deploy | Vercel deployed `87b35a0`: `/` serves the home page; signed-out `/pipeline` redirects to `/?next=/pipeline`; signed-out APIs return 401 (verified 18 Nov) |
-| Tests | `npm run check` = lint + tsc + vitest: **110 tests in 13 files** (87 unit tests in 12 files + the 23 simulation scenarios). `npm run simulate` runs only the 23 scenarios |
-| Leads in prod | **Only live-test leads** (plus-addresses of the owner's test inbox; tags `nr`, `rp`, `oo`, `wm`). The owner is about to import real leads via CSV. |
+| Tests | Local lint, typecheck, all **121 tests in 13 files** (89 unit + 32 simulation scenarios), and production build passed during this upgrade (final results below). `npm run simulate` runs only the 32 scenarios |
+| Leads in prod | **299 total: 295 real imports + 4 live-test leads.** The 308-row enriched CSV produced 295 unique valid leads: 9 duplicate rows and 4 Gmail contacts missing company names were skipped. All 295 stored records match the normalized CSV fields. Of the real leads, 294 are queued/approved and one is closed/bounced. |
+| First real send | Mistral's `jobs@` address returned a verified permanent SMTP **550 5.1.1 / account does not exist**. Auto-archive was correct. Today's 10-send warm-up cap includes 9 earlier live-test sends and this one bounced send. |
+| Connection audit | Gmail token has both required scopes; sender matches the connected account. Telegram token/chat and Groq credentials/model verified. Public home 200, signed-out pipeline redirects, protected API 401. Last worker run at audit: 19:40 IST. No worker or notification was triggered by the audit. |
 
 ### Open watch item
 - **Live test `oo` (out-of-office):** auto-resume is due **Tue 24 Nov 2026 10:00 IST** (`2026-11-24T04:30Z`). Expect Touch 2 to be sent automatically to the `+oo` address, without a manual step. Verify with `npm run live -- status`. After that, run `npm run live -- cleanup`, **with the owner's OK**, to delete all test leads.
@@ -69,6 +71,8 @@ Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked agains
     - `docs/leads-template.csv` (header only) + `docs/leads-template-example.csv` (example rows, do not upload);
     - `docs/CODEX_PROMPT.md` (hand-off prompt for Codex/ChatGPT + how to check tests).
 
+24. Lead-management upgrade implemented locally; see `docs/UPGRADE_013.md` for scope, validation and deployment order. No outbound messages or live worker runs were triggered.
+
 ---
 
 ## 3. Pending / follow-ups
@@ -76,11 +80,13 @@ Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked agains
 | # | Item | Owner | Notes |
 |---|---|---|---|
 | P1 | Verify `oo` auto-resume on **24 Nov 10:00 IST**, then clean up test leads | agent + owner OK | `npm run live -- status`, then `npm run live -- cleanup` |
-| P2 | Owner imports real leads from `docs/leads-template.csv` | owner | Import page → dry run → confirm. Week 1 cap = 10/day. Blank `geo_region` defaults to INDIA; blank `role_track` is inferred from `target_role_opening` |
+| P2 | Complete source-data enrichment | owner | Import is complete. Four rejected contacts need company names (enriched CSV data rows 82, 94, 107, 171, excluding header). 254 imported contacts have no target opening or icebreaker; 213 use the Team greeting. Import validation does not verify mailbox existence. |
 | P3 | Optional: 5-minute cron for faster alerts | owner (SQL) | `select cron.schedule('outreachos-worker-weekdays', '*/5 * * * 1-5', 'select public.oos_call_worker()');` |
 | P4 | Extend India festival dates beyond 2027 | agent | `src/lib/holidays.ts` (`INDIA_FESTIVALS`) before Dec 2027 |
 | P5 | Watch the first real sends: deliverability, bounces, replies | agent/owner | Analytics page; Telegram |
 | P6 | Optional roadmap | — | AI icebreakers on import, A/B subjects, bounce/warm Telegram alerts, multi-user white-label |
+| P7 | Deploy and verify the upgrade | agent | Owner confirmed migration 013 ran and authorized pushing. Local lint, types, 121 tests, production build and nine browser smoke checks passed. Verify CI and production after pushing; do not invoke the live worker. |
+| P8 | Email prechecks deferred | owner | No verifier integration, DNS precheck, verification queue or new send gate was added. Existing bounce detection remains; detailed SMTP reasons are captured for future bounces. Existing bounced leads can read the full notice on demand from their details page. |
 
 ---
 
@@ -108,8 +114,8 @@ Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked agains
 ```bash
 npm ci                    # install (CI uses this; see lockfile caveat)
 npm run dev               # local app at :3000 (needs .env.local)
-npm run check             # lint + typecheck + all 110 tests (incl. simulation) — must pass before every push
-npm run simulate          # 23-scenario end-to-end simulation → test-results/simulation-report.md
+npm run check             # lint + typecheck + all 121 tests (incl. simulation) — must pass before every push
+npm run simulate          # 32-scenario end-to-end simulation → test-results/simulation-report.md
 npm run build             # production build
 npm run live -- status    # live test leads (reads .env; sends only to plus-addresses of LIVE_LEAD_EMAIL)
 ```
@@ -145,4 +151,6 @@ npm install --package-lock-only
 | 2026-11-18 | `0729918` | Shared signature with labelled tracked links (`011`) |
 | 2026-11-18 | `87b35a0` | HANDOFF, PROJECT_BIBLE, PORTFOLIO_HANDOFF, deck, CSV template, Codex prompt (also triggered the Vercel deploy that `dfc5aaa` missed) |
 | 2026-11-18 | (docs fix) | Docs checked against the code: test counts, S7, Hybrid subject, OOO behaviour, HEAD probes, alert latency |
+| 2026-11-18 | (read-only audit) | Reconciled first real import (308 → 295), verified genuine SMTP 5.1.1 bounce, 9 test sends + 1 real bounce consuming today's cap, all 294 remaining real leads approved, live connections/auth and 1,180 template renders. Recorded approval API/UI limits and source-data gaps; production unchanged. |
+| 2026-11-18 | (local upgrade) | Implemented all approved fixes except deferred email prechecks. Added migration 013 and nine simulation regressions plus a full delivery-notice unit regression covering scale, Trash, suppression, import reports, regional fairness and quota. Deploy only after owner applies migration. |
 | earlier | — | See `git log` |

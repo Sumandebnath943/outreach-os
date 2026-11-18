@@ -71,3 +71,8 @@ describe("provider error classification", () => {
     expect(isAuthErrorMessage("socket hang up")).toBe(false);
   });
 });
+
+it("honors a full temporary delivery notice even when its preamble says delivery failed", () => {
+  expect(classifyDsn("Delivery incomplete", "Your message wasn't delivered. Gmail will retry. Action: delayed; Status: 4.2.0")).toBe("DELAY");
+  expect(classifyDsn("Delivery incomplete", "Earlier delay. Action: failed; Status: 5.1.1; account does not exist")).toBe("FAILURE");
+});

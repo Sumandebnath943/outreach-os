@@ -33,21 +33,28 @@ export function usePoll<T>(url: string | null, intervalMs = 20000) {
   const [loading, setLoading] = useState(true);
   const urlRef = useRef(url);
   urlRef.current = url;
+  const requestRef = useRef(0);
 
   const reload = useCallback(async () => {
     if (!urlRef.current) return;
+    const requestedUrl = urlRef.current;
+    const ticket = ++requestRef.current;
     try {
-      const d = await api<T>(urlRef.current);
+      const d = await api<T>(requestedUrl);
+      if (ticket !== requestRef.current || requestedUrl !== urlRef.current) return;
       setData(d);
       setError(null);
     } catch (e) {
+      if (ticket !== requestRef.current || requestedUrl !== urlRef.current) return;
       setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (ticket === requestRef.current && requestedUrl === urlRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    setData(null);
+    setLoading(true);
     reload();
     if (!url) return;
     const id = intervalMs > 0 ? setInterval(() => document.visibilityState === "visible" && reload(), intervalMs) : null;

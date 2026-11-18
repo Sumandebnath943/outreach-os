@@ -45,7 +45,7 @@ function defaults(table: string): Row {
   switch (table) {
     case "leads":
       return {
-        id: randomUUID(),
+        id: randomUUID(), deleted_at: null, last_reply_checked_at: null, is_test: false, import_batch_id: null,
         first_name: "Team",
         last_name: null,
         job_title: null,
@@ -79,6 +79,8 @@ function defaults(table: string): Row {
         created_at: now,
         updated_at: now,
       };
+    case "import_batches":
+      return { id: randomUUID(), created_at: now, summary: {}, exceptions: [], status: "IMPORTING" };
     case "email_logs":
       return {
         id: randomUUID(),
@@ -120,6 +122,8 @@ const isNull = (v: unknown) => v === null || v === undefined;
 
 export class FakeSupabase {
   tables: Record<string, Row[]> = {
+    import_batches: [],
+    suppressed_addresses: [],
     system_settings: [],
     sequence_templates: [],
     leads: [],
@@ -267,6 +271,8 @@ class FakeQuery implements PromiseLike<PgResult> {
     this.filters.push((r) => !isNull(get(r, col)) && get(r, col) === v);
     return this;
   }
+  is(col: string, v: unknown) { this.filters.push(r => v === null ? isNull(get(r,col)) : get(r,col) === v); return this; }
+  not(col: string, op: string, v: unknown) { this.filters.push(r => op === "is" && v === null ? !isNull(get(r,col)) : get(r,col) !== v); return this; }
   neq(col: string, v: unknown) {
     this.filters.push((r) => !isNull(get(r, col)) && get(r, col) !== v);
     return this;

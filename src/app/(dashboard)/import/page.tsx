@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
 import { Download, FileSpreadsheet, Upload } from "lucide-react";
-import { api, broadcastRefresh } from "@/lib/client";
+import { api, broadcastRefresh, usePoll } from "@/lib/client";
 import { autoMapHeaders, LEAD_FIELDS, SAMPLE_CSV, type LeadField } from "@/lib/ingest";
 import { GEO_REGIONS, ROLE_TRACKS, type ImportResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,10 @@ type Mapping = Record<string, LeadField | "full_name" | "">;
 const FIELD_OPTIONS: (LeadField | "full_name")[] = [...LEAD_FIELDS, "full_name"];
 
 export default function ImportPage() {
+  const { data: history } = usePoll<{ batches: { id: string; name: string; status: string; summary: Record<string, number>; created_at: string }[]; total: number }>("/api/imports", 0);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPoll = usePoll<typeof history>(`/api/imports?page=${historyPage}`, 0);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -38,7 +42,7 @@ export default function ImportPage() {
         setHeaders(hs);
         setMapping(autoMapHeaders(hs));
         setRawRows(res.data);
-        setPreview(null);
+        setPreview(null); setPreviewPage(1);
         if (res.errors.length) toast(`${res.errors.length} CSV parse warning(s): ${res.errors[0].message}`, "info");
       },
       error: (err) => toast(err.message, "err"),
@@ -80,13 +84,11 @@ export default function ImportPage() {
   async function doImport() {
     setImporting(true);
     try {
-      const r = await api<ImportResponse>("/api/leads/import", { method: "POST", json: { rows: mappedRows, overrides } });
+      const r = await api<ImportResponse>("/api/leads/import", { method: "POST", json: { rows: mappedRows, overrides, name: fileName } });
       toast(`Imported ${r.summary.inserted} lead(s) · Touch 1 queued`);
       broadcastRefresh();
       setPreview(r);
-      setRawRows([]);
-      setHeaders([]);
-      setFileName(null);
+
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {
@@ -229,7 +231,7 @@ export default function ImportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(preview?.results ?? []).slice(0, 500).map((r) => {
+                  {(preview?.results ?? []).slice((previewPage - 1) * 50, previewPage * 50).map((r) => {
                     const src = mappedRows[r.row - 1] ?? {};
                     return (
                       <tr key={r.row} className="border-b border-line/60">
@@ -246,7 +248,7 @@ export default function ImportPage() {
                         </td>
                         <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.email : r.status === "INVALID" ? <span className="text-rose-300">{r.error}</span> : r.email}</td>
                         <td className="px-3 py-1.5 text-muted">{r.status === "NEW" ? `${r.lead.first_name} ${r.lead.last_name ?? ""}` : src.first_name ?? src.full_name ?? ""}</td>
-                        <td className="px-3 py-1.5 text-muted">{r.status === "NEW" ? r.lead.company_name : src.company_name ?? ""}</td>
+                        <td className="px-3 py-1.5 text-muted">{r.status === "INVALID" && preview?.dryRun ? <input aria-label={`Company for row ${r.row}`} className="rounded border border-line bg-bg p-1" defaultValue={src.company_name ?? ""} onBlur={e => { const h = headers.find(h => mapping[h] === "company_name"); if (h) setRawRows(rs => rs.map((v, idx) => idx === r.row - 1 ? { ...v, [h]: e.target.value } : v)); else toast("Map a Company column first", "info"); }} /> : r.status === "NEW" ? r.lead.company_name : src.company_name ?? ""}</td>
                         <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.geo_region : ""}</td>
                         <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.role_track : ""}</td>
                       </tr>
@@ -254,12 +256,17 @@ export default function ImportPage() {
                   })}
                 </tbody>
               </table>
-              {preview && preview.results.length > 500 && <div className="px-3 py-2 text-xs text-dim">Showing first 500 rows.</div>}
+              <div className="flex items-center justify-between p-3"><Button size="sm" disabled={previewPage === 1} onClick={() => setPreviewPage(p => p - 1)}>Previous rows</Button><span>Page {previewPage} · {preview?.results.length ?? 0} rows</span><Button size="sm" disabled={previewPage * 50 >= (preview?.results.length ?? 0)} onClick={() => setPreviewPage(p => p + 1)}>Next rows</Button></div>
             </div>
           </Card>
         </div>
       )}
 
+      {preview && <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted">
+        <Button onClick={() => { const rows = preview.results.filter(r => r.status !== "NEW").map(r => ({ ...mappedRows[r.row - 1], row: r.row, reason: r.status === "INVALID" ? r.error : r.status })); const url = URL.createObjectURL(new Blob([Papa.unparse(rows, { escapeFormulae: true })], { type: "text/csv" })); const a = document.createElement("a"); a.href = url; a.download = "import-exceptions.csv"; a.click(); URL.revokeObjectURL(url); }}>Download excluded rows</Button>
+        <span>{mappedRows.filter(r => !r.target_role_opening).length} without a target role · {mappedRows.filter(r => !r.custom_icebreaker).length} without an icebreaker · {mappedRows.filter(r => !r.geo_region).length} defaulted regions. Mailbox existence is not checked.</span>
+      </div>}
+      <section className="mt-8"><h2 className="mb-3 text-lg font-medium">Import history</h2><p className="mb-3 text-xs text-muted">Reports begin with imports made in this version. Earlier contacts remain available in Leads.</p><div className="space-y-2">{(historyPoll.data?.batches ?? history?.batches ?? []).map(b => <div key={b.id} className="flex flex-wrap items-center gap-3 rounded border border-line p-3 text-sm"><Link className="text-sky-300" href={`/leads?batch=${b.id}`}>{b.name}</Link><span className="text-xs text-muted">{b.status} · {b.summary.total} rows · {b.summary.inserted ?? 0} imported · {new Date(b.created_at).toLocaleString()}</span><a className="ml-auto text-xs underline" href={`/api/imports?id=${b.id}`}>Excluded rows</a></div>)}</div><div className="mt-3 flex gap-2"><Button size="sm" disabled={historyPage === 1} onClick={() => setHistoryPage(p => p - 1)}>Previous imports</Button><Button size="sm" disabled={historyPage * 25 >= (historyPoll.data?.total ?? history?.total ?? 0)} onClick={() => setHistoryPage(p => p + 1)}>Next imports</Button></div></section>
       {preview && !preview.dryRun && (
         <div className="mt-4 text-sm text-emerald-300">
           Done — {preview.summary.inserted} lead(s) queued.{" "}

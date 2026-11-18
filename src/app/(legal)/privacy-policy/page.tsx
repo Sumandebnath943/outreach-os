@@ -86,7 +86,7 @@ export default function PrivacyPolicyPage() {
 
       <h2>4. Retention</h2>
       <p>
-        Records are kept while they are useful for my job search and deleted on request. Disconnecting Gmail deletes the stored token
+        Records are kept while they are useful for my job search and deleted on request. Moving a lead to Trash stops its sequence immediately; trashed records are retained for up to 30 days unless permanently deleted sooner. A minimal blocked-address record (email and reason) is kept for hard bounces and unsubscribe requests to prevent accidental re-contact. Disconnecting Gmail deletes the stored token
         immediately.
       </p>
 

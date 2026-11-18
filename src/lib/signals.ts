@@ -76,6 +76,10 @@ export function detectBot(input: {
  */
 export function classifyDsn(subject: string, snippet: string): "FAILURE" | "DELAY" {
   const s = `${subject} ${decodeEntities(snippet)}`.toLowerCase();
+  // Full notices can say "wasn't delivered" while explicitly promising another attempt.
+  // Prefer the delivery action/status over that generic preamble.
+  if (/action:\s*failed|status:\s*5\.|\(failure\)|gave up|permanent|\b5\.\d{1,3}\.\d{1,3}\b/.test(s)) return "FAILURE";
+  if (/action:\s*delayed|status:\s*4\.|\(delay\)|delivery incomplete|will (be )?retr(y|ied)|still trying/.test(s)) return "DELAY";
   const failure =
     /\(failure\)|undeliverable|delivery (has )?failed|failure notice|returned mail|address not found|could ?n[o']t be found|could not be delivered|could ?n[o']t be delivered|was ?n[o']t delivered|message not delivered(?! yet)|does ?n[o']t exist|user unknown|unknown user|no such user|mailbox (unavailable|not found|does not exist|disabled)|recipient (address )?rejected|rejected|blocked|permanent(ly)?|gave up|\b5\.\d{1,3}\.\d{1,3}\b|\b55[0-4]\b/;
   const delay =
@@ -83,6 +87,20 @@ export function classifyDsn(subject: string, snippet: string): "FAILURE" | "DELA
   if (failure.test(s)) return "FAILURE";
   if (delay.test(s)) return "DELAY";
   return "FAILURE";
+}
+
+/** Useful operator-facing diagnosis, excluding the returned original email. */
+export function deliveryFailureReason(text: string): string {
+  const clean = decodeEntities(text).replace(/\r?\n[ \t]+/g, " ");
+  const code = clean.match(/\b[45]\d\d[- ]([45]\.\d{1,3}\.\d{1,3})\b/)?.[0]?.replace("-", " ")
+    ?? clean.match(/\b[45]\.\d{1,3}\.\d{1,3}\b/)?.[0];
+  const label = /account.{0,40}does not exist|address not found|no such user|user unknown/i.test(clean) ? "Mailbox does not exist"
+    : /quota exceeded|mailbox.{0,20}full|inbox.{0,20}full/i.test(clean) ? "Mailbox is full"
+    : /blocked|rejected|policy|spam/i.test(clean) ? "Rejected by recipient mail server"
+    : "Delivery failed";
+  const diagnostic = clean.match(/Diagnostic-Code:\s*([^\n]+(?:\n(?![A-Za-z-]+:|\s*$)[^\n]+)*)/i)?.[1]
+    ?? clean.split(/\n/).find(line => /\b[45]\d\d[- ]|\b[45]\.\d\.\d\b/.test(line));
+  return `${label}${code ? ` (${code})` : ""}${diagnostic ? `: ${diagnostic.replace(/\s+/g, " ").slice(0, 1200)}` : `: ${clean.split(/\n\s*\n/).slice(0, 3).join(" ").slice(0, 500)}`}`;
 }
 
 /** Provider rejected the recipient address itself — retrying cannot help. */

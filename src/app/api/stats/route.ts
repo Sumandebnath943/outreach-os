@@ -13,7 +13,7 @@ export const GET = route(async () => {
   const cap = effectiveDailyLimit(settings, new Date(), env.ownerTimezone());
   const horizon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   // Exact counts via head requests — unaffected by the PostgREST 1000-row response cap.
-  const leads = () => db().from("leads").select("id", { count: "exact", head: true });
+  const leads = () => db().from("leads").select("id", { count: "exact", head: true }).is("deleted_at", null);
   const exact = async (q: PromiseLike<{ count: number | null; error: { message: string } | null }>) => {
     const res = await q;
     if (res.error) throw new Error(`stats: ${res.error.message}`);
@@ -35,7 +35,13 @@ export const GET = route(async () => {
   ]);
 
   const byStage = Object.fromEntries(FUNNEL_STAGES.map((s, i) => [s, stageCounts[i]])) as Record<FunnelStage, number>;
+  const since = startOfTodayIn(env.ownerTimezone()).toISOString();
+  const [testSends, bounced] = await Promise.all([
+    exact(db().from("email_logs").select("id", { count: "exact", head: true }).in("status", ["SENT", "BOUNCED"]).eq("is_test", true).gte("sent_at", since)),
+    exact(db().from("email_logs").select("id", { count: "exact", head: true }).eq("status", "BOUNCED").gte("sent_at", since)),
+  ]);
   const stats: DashboardStats = {
+    quotaBreakdown: { test: testSends, outreach: sentToday - testSends, bounced },
     total: stageCounts.reduce((a, b) => a + b, 0),
     activeInSequence: active,
     warm: byStage.WARM_ENGAGED,

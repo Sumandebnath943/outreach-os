@@ -1,5 +1,7 @@
 # Hand-off prompt for Codex / ChatGPT
 
+> **Upgrade note (18 Nov 2026):** the local lead-management upgrade supersedes the older route, approval UI and test-count descriptions below. Read `docs/UPGRADE_013.md` and `docs/HANDOFF.md` first. It requires migration 013 before deployment; email prechecks are deferred.
+
 Copy everything inside the fence into a new Codex session opened on this repository.
 
 ```text

@@ -1,5 +1,7 @@
 # OutreachOS
 
+> **Local upgrade:** this version needs migration **013_lead_management.sql** before deployment. See [upgrade instructions](docs/UPGRADE_013.md). Email prechecks are deferred.
+
 A self-hosted job search and cold outreach funnel CRM for **Suman Debnath**. It is aimed at Senior Brand Marketing Manager, AI PMM and AI PM roles in India and the US.
 
 It treats the job hunt like an outbound sales pipeline:
@@ -33,7 +35,8 @@ Next.js 15 (App Router) · Supabase Postgres · Gmail API (OAuth2) / Resend · T
 
 ### Dashboard views
 - **`/` Pipeline:** an 8-column drag-and-drop Kanban. Each card shows Geo, Track, Touch, and Opens/Clicks/Pages counts. Click a card to open the Lead Dossier drawer. It shows the sent thread, the telemetry timeline, the stage and sub-stage, reply triage actions, notes, and pause/resume controls.
-- **`/approvals` Morning Approval Queue:** shows touches due in the next 24h. You can edit the subject, body or icebreaker inline, then click **Approve & Dispatch Batch**.
+- **`/approvals`:** paginated Pending/Approved/Held tables with exact totals and message review drawers. Approve selected or all matching contacts across pages. Approval does not run the worker.
+- **`/leads`:** searchable, filterable and sortable paginated directory; bulk pause, archive, export and Trash. Dedicated `/leads/:id` details pages. Trash is retained for 30 days; restored records remain paused.
 - **`/import`:** drag-and-drop CSV import with automatic header mapping, a duplicate preview, Geo/Track overrides, and a sample CSV.
 - **`/templates` Sequence Studio:** edit T1, T2A (warm), T2B (cold), T3 and T4 for each role track, with a live preview. Role tracks inherit `HYBRID_DEFAULT` until you fork a touch.
 - **`/settings`:** caps, jitter, send windows, provider, sender identity, Gmail connect, and the portfolio snippet with your URL pre-filled.
@@ -120,7 +123,7 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001` through `012`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `013`.
    A database set up earlier only needs the ones it hasn't run yet. They are all safe to re-run.
    - `006` installs the best-practice master sequence (see `docs/TEMPLATE_PROPOSAL.md`).
    - `007` adds the Telegram digest bookkeeping.
@@ -261,12 +264,12 @@ To set it up:
 - It refuses to run while a real lead could be sent, and never changes settings.
 - Commands: `status`, `next <tag>`, `sync`, `resume <tag>`, `archive <tag>`, `cleanup`.
 
-The fully offline equivalent is `npm run simulate`. It runs 19 scenarios on a fake clock and writes `test-results/simulation-report.md`.
+The fully offline equivalent is `npm run simulate`. It runs 32 scenarios on a fake clock and writes `test-results/simulation-report.md`.
 
 ## Daily operation
 1. Import a CSV in **Import**. New leads land in `LEAD_QUEUED` with Touch 1 due right away.
 2. **Auto-Pilot**, the default, sends due touches automatically inside each recipient's window. Replies are synced and the queue is run automatically on every worker run; the **Sync Replies & Run Queue** button just triggers a run immediately.
-   Switch to **Approval Gate** in the top bar if you want to approve each email first: open **Approvals**, tweak any drafts, and click **Approve & Dispatch Batch**.
+   Switch to **Approval Gate** in the top bar if you want to approve each email first: open **Approvals**, tweak any drafts, and click **Approve selected** or **Approve all matching**; the scheduled worker handles dispatch.
 3. Watch for amber flame cards. These are warm leads, and they automatically get T2A.
 4. When Telegram pings a reply, tap **Open in Gmail** and answer it yourself. OutreachOS never writes back on your behalf.
 5. Triage the lead in its dossier with **Call booked → Interviewing**, **Not now → Nurture**, or **Rejected**.
@@ -277,4 +280,4 @@ The fully offline equivalent is `npm run simulate`. It runs 19 scenarios on a fa
 - **Testing your own links:** clicking a tracked link stores that lead's `ref` in your browser. Use a private window when testing.
 - **Anchor text:** tracked links show the clean portfolio URL as their text, but point to your OutreachOS domain. Putting OutreachOS on a custom subdomain, such as `go.houseofnamus.com`, keeps link domains aligned for deliverability.
 - **Reply detection needs Gmail:** it requires a Gmail connection, even when you send through Resend.
-- **Reply labels are keyword matching only.** The sentiment classifier is a simple keyword heuristic, not an LLM.
+- **Reply labels:** Groq triage is used when configured, with a keyword fallback.

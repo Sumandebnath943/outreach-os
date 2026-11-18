@@ -54,7 +54,7 @@ export const GET = route(async (req: NextRequest) => {
       "analytics events",
     ),
     readAll<AnalyticsLead>(
-      (a, b) => db().from("leads").select("id, funnel_stage, sub_stage, role_track, geo_region").order("id").range(a, b),
+      (a, b) => db().from("leads").select("id, funnel_stage, sub_stage, role_track, geo_region").is("deleted_at", null).order("id").range(a, b),
       "analytics leads",
     ),
   ]);

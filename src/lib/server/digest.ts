@@ -32,12 +32,12 @@ export async function maybeSendDigest(settings: SystemSettings, now = new Date()
   const head = { count: "exact" as const, head: true };
 
   const [triage, warm, due, interviewing, sinceYesterday, sinceToday] = await Promise.all([
-    db().from("leads").select("*", head).eq("funnel_stage", "REPLIED_TRIAGE"),
-    db().from("leads").select("*", head).eq("funnel_stage", "WARM_ENGAGED").eq("sequence_active", true),
+    db().from("leads").select("*", head).is("deleted_at", null).eq("funnel_stage", "REPLIED_TRIAGE"),
+    db().from("leads").select("*", head).is("deleted_at", null).eq("funnel_stage", "WARM_ENGAGED").eq("sequence_active", true),
     (() => {
       let q = db()
         .from("leads")
-        .select("id", head)
+        .select("id", head).is("deleted_at", null)
         .eq("sequence_active", true)
         .lt("current_touch", 4)
         .in("funnel_stage", SENDABLE_STAGES)
@@ -45,13 +45,13 @@ export async function maybeSendDigest(settings: SystemSettings, now = new Date()
       q = settings.execution_mode === "APPROVAL_GATE" ? q.eq("approval_status", "PENDING") : q.neq("approval_status", "PAUSED");
       return q;
     })(),
-    db().from("leads").select("id", head).eq("funnel_stage", "INTERVIEWING"),
+    db().from("leads").select("id", head).is("deleted_at", null).eq("funnel_stage", "INTERVIEWING"),
     countSentSince(yesterdayStart.toISOString()),
     countSentSince(todayStart.toISOString()),
   ]);
   const [triageRows, warmRows] = await Promise.all([
-    db().from("leads").select("*").eq("funnel_stage", "REPLIED_TRIAGE").order("replied_at", { ascending: false, nullsFirst: false }).limit(8),
-    db().from("leads").select("*").eq("funnel_stage", "WARM_ENGAGED").eq("sequence_active", true).order("last_engaged_at", { ascending: false, nullsFirst: false }).limit(3),
+    db().from("leads").select("*").is("deleted_at", null).eq("funnel_stage", "REPLIED_TRIAGE").order("replied_at", { ascending: false, nullsFirst: false }).limit(8),
+    db().from("leads").select("*").is("deleted_at", null).eq("funnel_stage", "WARM_ENGAGED").eq("sequence_active", true).order("last_engaged_at", { ascending: false, nullsFirst: false }).limit(3),
   ]);
   const toDigest = (l: Lead, withSentiment: boolean): DigestLead => ({
     company: l.company_name,

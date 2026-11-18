@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server";
-import { db, getSettings, logEvent, must, PAGE_SIZE, updateLead } from "@/lib/server/db";
+import { db, getSettings, logEvent, must, updateLead } from "@/lib/server/db";
+import { filtersFrom, leadQuery, pagination, suppression } from "@/lib/server/lead-query";
+import Papa from "papaparse";
 import { fail, ok, readJson, route } from "@/lib/server/http";
 import { loadTemplates } from "@/lib/server/sequencer";
 import { resumeDueAt, resumeStageFor, stageSideEffects, waitFor } from "@/lib/funnel";
@@ -8,33 +10,26 @@ import { FUNNEL_STAGES, GEO_REGIONS, ROLE_TRACKS, type FunnelStage, type Lead } 
 import { UUID_RE } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-
-const MAX_LIST = 10_000;
+export const maxDuration = 60;
 
 /** GET /api/leads?stage=WARM_ENGAGED&q=acme&limit=500 — pages past the PostgREST row cap. */
 export const GET = route(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams;
-  const limit = Math.min(MAX_LIST, Math.max(1, Math.floor(Number(sp.get("limit")) || MAX_LIST)));
-  const stage = sp.get("stage");
-  const search = sp.get("q")?.trim().slice(0, 100);
-  // PostgREST filter syntax uses , ( ) . : * \ " as delimiters/wildcards — strip them from user input.
-  const needle = search?.replace(/[%,().:*\\"]/g, " ").trim();
-
-  const leads: Lead[] = [];
-  for (let from = 0; from < limit; from += PAGE_SIZE) {
-    let q = db()
-      .from("leads")
-      .select("*")
-      .order("updated_at", { ascending: false })
-      .order("id")
-      .range(from, Math.min(from + PAGE_SIZE, limit) - 1);
-    if (stage && (FUNNEL_STAGES as readonly string[]).includes(stage)) q = q.eq("funnel_stage", stage);
-    if (needle) q = q.or(`email.ilike.%${needle}%,company_name.ilike.%${needle}%,first_name.ilike.%${needle}%,last_name.ilike.%${needle}%`);
-    const page = must(await q, "list leads") as Lead[];
-    leads.push(...page);
-    if (page.length < PAGE_SIZE) break;
+  const filters = filtersFrom(sp);
+  const p = pagination(sp);
+  if (sp.get("export") === "true") {
+    const rows: Lead[] = [];
+    for (let from = 0; ; from += 1000) {
+      const batch = must(await leadQuery(filters).order("id").range(from, from + 999), "export leads") as unknown as Lead[];
+      rows.push(...batch);
+      if (batch.length < 1000) break;
+    }
+    return new Response(Papa.unparse(rows, { escapeFormulae: true }), { headers: { "Content-Type": "text/csv", "Content-Disposition": 'attachment; filename="outreach-leads.csv"' } });
   }
-  return ok({ leads });
+  const sort = sp.get("sort");
+  const column = sort === "company" ? "company_name" : sort === "created" ? "created_at" : sort === "due" ? "next_touch_due_at" : "updated_at";
+  const res = await leadQuery(filters).order(column, { ascending: sort === "company" || sort === "due", nullsFirst: false }).order("id").range(p.from, p.to);
+  return ok({ leads: must(res, "list leads"), total: res.count ?? 0, page: p.page, pageSize: p.pageSize });
 });
 
 /** POST /api/leads — create a single lead (manual entry). */
@@ -42,6 +37,8 @@ export const POST = route(async (req: Request) => {
   const body = await readJson(req);
   const n = normalizeLead(body);
   if (!n.ok) return fail(n.error);
+  const blocked = await suppression(n.lead.email);
+  if (blocked) return fail(`This address is blocked: ${blocked}`, 409);
   const existing = await db().from("leads").select("id, funnel_stage").eq("email", n.lead.email).maybeSingle();
   if (existing.data) return fail(`Lead ${n.lead.email} already exists (${existing.data.funnel_stage})`, 409);
   const res = await db()
@@ -71,6 +68,7 @@ export const PATCH = route(async (req: Request) => {
   const body = await readJson<Record<string, unknown> & { id?: string; action?: string; funnel_stage?: string }>(req);
   if (!body.id || !UUID_RE.test(body.id)) return fail("id required");
   const current = must(await db().from("leads").select("*").eq("id", body.id).single(), "load lead") as Lead;
+  if (current.deleted_at) return fail("This lead is in Trash. Restore it from Leads first.", 409);
 
   const patch: Partial<Lead> = {};
   const set = (k: keyof Lead, v: unknown) => ((patch as Record<string, unknown>)[k] = v);
@@ -111,6 +109,8 @@ export const PATCH = route(async (req: Request) => {
   if ("company_name" in patch && !patch.company_name) return fail("company_name cannot be empty");
 
   if (body.action === "resume_sequence") {
+    const blocked = await suppression(current.email);
+    if (blocked) return fail(`This address is blocked: ${blocked}`, 409);
     if (current.current_touch >= 4) return fail("All 4 touches already sent");
     const [templates, lastSent, settings] = await Promise.all([
       loadTemplates(),
@@ -158,6 +158,6 @@ export const PATCH = route(async (req: Request) => {
 export const DELETE = route(async (req: NextRequest) => {
   const id = req.nextUrl.searchParams.get("id");
   if (!id || !UUID_RE.test(id)) return fail("id required");
-  must(await db().from("leads").delete().eq("id", id).select("id"), "delete lead");
+  must(await db().from("leads").update({ deleted_at: new Date().toISOString(), sequence_active: false, approval_status: "PAUSED", next_touch_due_at: null, reengage_at: null }).eq("id", id).select("id"), "trash lead");
   return ok({ deleted: id });
 });

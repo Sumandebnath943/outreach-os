@@ -81,6 +81,10 @@ export interface SequenceTemplate {
 }
 
 export interface Lead {
+  deleted_at?: string | null;
+  last_reply_checked_at?: string | null;
+  is_test?: boolean;
+  import_batch_id?: string | null;
   id: string;
   first_name: string;
   last_name: string | null;
@@ -145,6 +149,7 @@ export interface TrackingEvent {
 }
 
 export interface DashboardStats {
+  quotaBreakdown?: { test: number; outreach: number; bounced: number };
   total: number;
   activeInSequence: number;
   warm: number;
@@ -204,6 +209,7 @@ export type ImportRowResult =
   | { row: number; status: "DUPLICATE_EXISTING"; email: string; stage: string; locked: boolean };
 
 export interface ImportResponse {
+  batchId?: string;
   dryRun: boolean;
   summary: { total: number; new: number; inserted: number; invalid: number; duplicateInFile: number; duplicateExisting: number };
   results: ImportRowResult[];

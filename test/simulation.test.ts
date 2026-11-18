@@ -825,4 +825,137 @@ describe("end-to-end pipeline simulation", () => {
       delete process.env.GROQ_API_KEY;
     }
   });
+  it("S24 · paginated approvals and approve-all reach beyond 1,000 without sending", async () => {
+    const sim = new Sim("Large approvals", MON_0830_IST, { execution_mode: "APPROVAL_GATE" });
+    const { POST: importPost } = await import("@/app/api/leads/import/route");
+    const { GET, POST } = await import("@/app/api/approvals/route");
+    const rows = Array.from({ length: 1250 }, (_, i) => defaultLead({ email: `bulk${i}@example.com` }));
+    const imported = await importPost(new Request("http://sim/api/leads/import", { method: "POST", body: JSON.stringify({ rows }) }));
+    expect(imported.status).toBe(200);
+    const first = await (await GET(new Request("http://sim/api/approvals?pageSize=25"))).json();
+    const second = await (await GET(new Request("http://sim/api/approvals?page=2&pageSize=25"))).json();
+    expect(first.total).toBe(1250); expect(first.items).toHaveLength(25);
+    expect(first.items.some((x: { lead: { id: string } }) => second.items.some((y: { lead: { id: string } }) => x.lead.id === y.lead.id))).toBe(false);
+    const approved = await (await POST(new Request("http://sim/api/approvals", { method: "POST", body: JSON.stringify({ action: "approve", allMatching: true, filters: {} }) }))).json();
+    expect(approved.updated).toBe(1250);
+    expect(sim.gmail.messages).toHaveLength(0);
+    const empty = await (await GET(new Request("http://sim/api/approvals"))).json();
+    expect(empty.total).toBe(0); expect(empty.counts.APPROVED).toBe(1250);
+  });
+
+  it("S25 · Trash stops sends, hides counts, restores paused, and needs explicit resume", async () => {
+    const sim = new Sim("Trash lifecycle", "2026-11-23T04:30:00Z");
+    await sim.importLead();
+    const id = sim.lead().id;
+    const { DELETE, GET } = await import("@/app/api/leads/route");
+    const { POST } = await import("@/app/api/leads/bulk/route");
+    const { NextRequest } = await import("next/server");
+    expect((await DELETE(new NextRequest(`http://sim/api/leads?id=${id}`))).status).toBe(200);
+    const list = await (await GET(new NextRequest("http://sim/api/leads"))).json();
+    expect(list.total).toBe(0);
+    await sim.cron(); expect(sim.gmail.messages).toHaveLength(0);
+    await POST(new Request("http://sim/api/leads/bulk", { method: "POST", body: JSON.stringify({ action: "restore", ids: [id] }) }));
+    expect(sim.lead()).toMatchObject({ deleted_at: null, sequence_active: false, approval_status: "PAUSED" });
+    await sim.cron(); expect(sim.gmail.messages).toHaveLength(0);
+    const { PATCH } = await import("@/app/api/leads/route");
+    await PATCH(new Request("http://sim/api/leads", { method: "PATCH", body: JSON.stringify({ id, action: "resume_sequence" }) }));
+    await sim.cron(); expect(sim.touches()).toEqual(["T1"]);
+  });
+
+  it("S26 · hard-bounce suppression survives permanent deletion", async () => {
+    const sim = new Sim("Suppression lifecycle", "2026-11-23T04:30:00Z");
+    await sim.importLead(); await sim.cron(); sim.advance(HOUR);
+    sim.gmail.receive({ from: "MAILER-DAEMON@example.com", subject: "Undelivered Mail Returned to Sender", snippet: `${LEAD_EMAIL}: 550-5.1.1 The email account that you tried to reach does not exist`, threadId: sim.lead().gmail_thread_id });
+    await sim.cron();
+    expect(sim.logs()[0].error).toContain("Mailbox does not exist (550 5.1.1)");
+    const { POST } = await import("@/app/api/leads/bulk/route");
+    const id = sim.lead().id;
+    for (const action of ["trash", "delete"]) await POST(new Request("http://sim/api/leads/bulk", { method: "POST", body: JSON.stringify({ action, ids: [id] }) }));
+    expect(sim.db.tables.leads).toHaveLength(0);
+    const reimported = await sim.importLead();
+    expect(reimported.summary.inserted).toBe(0);
+    expect(reimported.results[0]).toMatchObject({ status: "DUPLICATE_EXISTING", locked: true, stage: "SUPPRESSED" });
+  });
+
+  it("S27 · reply rotation reaches contacts beyond the database response cap", async () => {
+    const sim = new Sim("Reply rotation", "2026-11-23T04:30:00Z");
+    const { POST } = await import("@/app/api/leads/import/route");
+    await POST(new Request("http://sim/api/leads/import", { method: "POST", body: JSON.stringify({ rows: Array.from({ length: 1100 }, (_, i) => defaultLead({ email: `rotation${i}@example.com` })) }) }));
+    for (const lead of sim.db.tables.leads) Object.assign(lead, { current_touch: 1, funnel_stage: "OUTREACH_ACTIVE", next_touch_due_at: "2027-02-01T04:30:00Z" });
+    const last = [...sim.db.tables.leads].sort((a, b) => String(a.id).localeCompare(String(b.id))).at(-1)!;
+    sim.advance(HOUR);
+    sim.gmail.receive({ from: String(last.email), snippet: "Let's talk about an interview" });
+    for (let i = 0; i < 4; i++) { await sim.cron(); sim.advance(10 * 60_000); }
+    expect(sim.db.tables.leads.find(l => l.id === last.id)?.funnel_stage).toBe("REPLIED_TRIAGE");
+    expect(sim.db.tables.leads.every(l => l.last_reply_checked_at)).toBe(true);
+  });
+
+  it("S28 · closed-region backlog cannot starve a US lead", async () => {
+    const sim = new Sim("Regional fairness", "2026-11-23T15:00:00Z");
+    const { POST } = await import("@/app/api/leads/import/route");
+    const us = alias("us-fair");
+    const rows = [...Array.from({ length: 320 }, (_, i) => defaultLead({ email: `india${i}@example.com`, geo_region: "INDIA" })), defaultLead({ email: us, geo_region: "US" })];
+    await POST(new Request("http://sim/api/leads/import", { method: "POST", body: JSON.stringify({ rows }) }));
+    await sim.cron();
+    expect(sim.gmail.sentTo(us)).toHaveLength(1);
+    expect(sim.db.tables.email_logs).toHaveLength(1);
+  });
+
+  it("S29 · import reports persist exceptions and dry runs do not create batches", async () => {
+    const sim = new Sim("Import reports", MON_0830_IST);
+    const { POST } = await import("@/app/api/leads/import/route");
+    const rows = [defaultLead(), defaultLead(), { email: "unknown@gmail.com" }];
+    const request = (dryRun: boolean) => new Request("http://sim/api/leads/import", { method: "POST", body: JSON.stringify({ rows, dryRun, name: "Campaign example.csv" }) });
+    const preview = await (await POST(request(true))).json();
+    expect(preview.summary).toMatchObject({ new: 1, invalid: 1, duplicateInFile: 1, inserted: 0 });
+    expect(sim.db.tables.import_batches).toHaveLength(0);
+    const imported = await (await POST(request(false))).json();
+    expect(imported.summary.inserted).toBe(1);
+    expect(sim.db.tables.import_batches[0]).toMatchObject({ id: imported.batchId, status: "COMPLETE", name: "Campaign example.csv" });
+    expect(sim.db.tables.import_batches[0].exceptions).toHaveLength(2);
+    expect(sim.lead().import_batch_id).toBe(imported.batchId);
+  });
+
+  it("S30 · approve-all honors filters, holds and Trash", async () => {
+    const sim = new Sim("Filtered approval", MON_0830_IST);
+    await sim.importLead(defaultLead({ email: alias("us"), geo_region: "US" }));
+    await sim.importLead(defaultLead({ email: alias("in"), geo_region: "INDIA" }));
+    await sim.importLead(defaultLead({ email: alias("held"), geo_region: "US" }));
+    await sim.importLead(defaultLead({ email: alias("trash"), geo_region: "US" }));
+    sim.db.tables.leads.find(l => l.email === alias("held"))!.approval_status = "PAUSED";
+    Object.assign(sim.db.tables.leads.find(l => l.email === alias("trash"))!, { deleted_at: new Date().toISOString(), sequence_active: false });
+    const { POST } = await import("@/app/api/approvals/route");
+    const result = await (await POST(new Request("http://sim/api/approvals", { method: "POST", body: JSON.stringify({ action: "approve", allMatching: true, filters: { geo: "US" } }) }))).json();
+    expect(result.updated).toBe(1);
+    expect(sim.lead(alias("in")).approval_status).toBe("PENDING");
+    expect(sim.lead(alias("held")).approval_status).toBe("PAUSED");
+    expect(sim.lead(alias("trash")).approval_status).toBe("PENDING");
+    expect(sim.gmail.messages).toHaveLength(0);
+  });
+
+  it("S31 · quota preserves sent test counts while Trash is excluded from lead counts", async () => {
+    const sim = new Sim("Quota visibility", "2026-11-23T04:30:00Z");
+    await sim.importLead(); sim.db.tables.leads[0].is_test = true;
+    await sim.cron();
+    const { DELETE } = await import("@/app/api/leads/route");
+    const { GET } = await import("@/app/api/stats/route");
+    const { NextRequest } = await import("next/server");
+    await DELETE(new NextRequest(`http://sim/api/leads?id=${sim.lead().id}`));
+    const stats = await (await GET()).json();
+    expect(stats.total).toBe(0); expect(stats.activeInSequence).toBe(0);
+    expect(stats.sentToday).toBe(1);
+    expect(stats.quotaBreakdown).toEqual({ test: 1, outreach: 0, bounced: 0 });
+  });
+
+  it("S32 · bulk approval skips unresolved drafts instead of approving broken messages", async () => {
+    const sim = new Sim("Draft validation", MON_0830_IST, { execution_mode: "APPROVAL_GATE" });
+    await sim.importLead();
+    const { POST } = await import("@/app/api/approvals/route");
+    await POST(new Request("http://sim/api/approvals", { method: "POST", body: JSON.stringify({ action: "save_draft", leadId: sim.lead().id, subject: "Example", body: "Hi {{unknown_variable}}" }) }));
+    const result = await (await POST(new Request("http://sim/api/approvals", { method: "POST", body: JSON.stringify({ action: "approve", allMatching: true, filters: {} }) }))).json();
+    expect(result.updated).toBe(0); expect(result.skipped).toBe(1);
+    expect(sim.lead().approval_status).toBe("PENDING");
+    expect(sim.gmail.messages).toHaveLength(0);
+  });
+
 });

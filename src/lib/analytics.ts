@@ -104,7 +104,8 @@ export function computeAnalytics(
   const tz = opts.tz ?? "Asia/Kolkata";
   const inRange = (iso: string) => (!opts.from || iso >= opts.from.toISOString()) && iso <= to.toISOString();
 
-  const logs = input.logs.filter((l) => (l.status === "SENT" || l.status === "BOUNCED") && inRange(l.sent_at));
+  const visibleLeadIds = new Set(input.leads.map(l => l.id));
+  const logs = input.logs.filter((l) => visibleLeadIds.has(l.lead_id) && (l.status === "SENT" || l.status === "BOUNCED") && inRange(l.sent_at));
   const logIds = new Set(logs.map((l) => l.id));
   const contactedIds = new Set(logs.map((l) => l.lead_id));
   const leads = input.leads.filter((l) => contactedIds.has(l.id));
