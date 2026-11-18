@@ -1030,4 +1030,38 @@ describe("end-to-end pipeline simulation", () => {
     expect(sim.lead(email).email_check_status).toBe('PASSED'); expect(sim.sentLogs()).toHaveLength(1); expect(sim.gmail.sentTo(email)).toHaveLength(0);
   });
 
+  it('S38 · permanent deletion removes content and drafts while preserving sent quota', async () => {
+    const sim = new Sim('Permanent-delete quota', '2026-11-23T04:30:00Z');
+    await sim.importLead(); sim.db.tables.leads[0].is_test = true; await sim.cron();
+    const id = sim.lead().id;
+    const { POST: drafts } = await import('@/app/api/approvals/route');
+    await drafts(new Request('http://sim/api/approvals', { method: 'POST', body: JSON.stringify({ action: 'save_draft', leadId: id, subject: 'Private draft', body: 'Private content' }) }));
+    const { POST } = await import('@/app/api/leads/bulk/route');
+    for (const action of ['trash','delete']) await POST(new Request('http://sim/api/leads/bulk', { method: 'POST', body: JSON.stringify({ action, ids: [id] }) }));
+    const stats = await (await (await import('@/app/api/stats/route')).GET()).json();
+    expect(stats.total).toBe(0); expect(stats.sentToday).toBe(1); expect(stats.quotaBreakdown.test).toBe(1);
+    expect(sim.db.tables.email_logs).toHaveLength(1);
+    expect(sim.db.tables.email_logs[0]).toMatchObject({ lead_id: null, body_html: '', subject: '(Deleted lead)', status: 'SENT' });
+  });
+
+  it('S39 · a mode change during dispatch cannot bypass the fresh approval gate', async () => {
+    const sim = new Sim('Final dispatch gate', '2026-11-23T04:30:00Z');
+    await sim.importLead();
+    const { getSettings } = await import('@/lib/server/db');
+    const oldSettings = await getSettings(); sim.db.tables.system_settings[0].execution_mode = 'APPROVAL_GATE';
+    const { dispatchTouch, loadTemplates } = await import('@/lib/server/sequencer');
+    await expect(dispatchTouch(sim.lead(), oldSettings, await loadTemplates(), null)).rejects.toThrow('before provider handoff');
+    expect(sim.gmail.messages).toHaveLength(0);
+  });
+
+  it('S40 · unsubscribe blocks the saved precheck and future re-import', async () => {
+    const sim = new Sim('Unsubscribe precheck', '2026-11-23T04:30:00Z');
+    await sim.importLead(); await sim.cron(); sim.advance(HOUR);
+    sim.gmail.receive({ from: LEAD_EMAIL, snippet: 'Please unsubscribe and stop emailing me', threadId: sim.lead().gmail_thread_id });
+    await sim.cron();
+    expect(sim.lead().email_check_status).toBe('BLOCKED');
+    expect(sim.lead().sequence_active).toBe(false);
+    expect(sim.db.tables.suppressed_addresses[0].reason).toBe('Unsubscribed');
+  });
+
 });

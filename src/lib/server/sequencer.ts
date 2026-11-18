@@ -187,7 +187,10 @@ export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: str
       senderName: settings.sender_name,
       portfolioUrl: settings.portfolio_base_url,
     });
-    if (insight.intent === "UNSUBSCRIBE") must(await db().from("suppressed_addresses").upsert({ email: lead.email.toLowerCase(), reason: "Unsubscribed" }, { onConflict: "email" }).select("email"), "suppress unsubscribe");
+    if (insight.intent === "UNSUBSCRIBE") {
+      must(await db().from("suppressed_addresses").upsert({ email: lead.email.toLowerCase(), reason: "Unsubscribed" }, { onConflict: "email" }).select("email"), "suppress unsubscribe");
+      must(await db().from('leads').update({ email_check_status: 'BLOCKED', email_check_reason: 'Suppressed: Unsubscribed' }).eq('id', lead.id).select('id'), 'block unsubscribed precheck');
+    }
     const late = lead.funnel_stage === "CLOSED_ARCHIVE";
     const resumeAt = late ? null : await oooResumeAt(lead, insight, receivedAt, settings, await loadTemplates());
     const replyFields = {
@@ -378,6 +381,12 @@ export async function dispatchTouch(
   const toName = [lead.first_name !== "Team" ? lead.first_name : "", lead.last_name ?? ""].join(" ").trim() || undefined;
 
   // ── 1. hand the message to the provider ──
+  // DNS and draft rendering can take time. Recheck edits/holds immediately before provider I/O.
+  const ready = must(await db().from('leads').select('*').eq('id', lead.id).maybeSingle(), 'final send gate') as Lead | null;
+  const mode = await getSettings();
+  if (!ready || ready.deleted_at || !ready.sequence_active || ready.email !== lead.email || ready.current_touch !== lead.current_touch || ready.approval_status === 'PAUSED'
+    || ready.email_check_status !== 'PASSED' || (mode.execution_mode === 'APPROVAL_GATE' && ready.approval_status !== 'APPROVED')
+    || await suppression(lead.email)) throw new Error('Lead changed or email check blocked sending before provider handoff');
   let providerMessageId: string;
   let rfcMessageId: string;
   let threadId: string | null = lead.gmail_thread_id;

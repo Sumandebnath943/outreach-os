@@ -33,7 +33,7 @@ const ENUMS: Record<string, Record<string, readonly unknown[]>> = {
 
 const NOT_NULL: Record<string, string[]> = {
   leads: ["email", "company_name"],
-  email_logs: ["lead_id", "touch_number", "subject", "body_html", "provider"],
+  email_logs: ["touch_number", "subject", "body_html", "provider"],
   tracking_events: ["lead_id", "event_type"],
   sequence_templates: ["role_track", "touch_number", "subject_template", "body_template"],
 };
@@ -187,7 +187,8 @@ export class FakeSupabase {
   cascade(table: string, removed: Row[]) {
     const ids = new Set(removed.map((r) => r.id));
     if (table === "leads") {
-      this.tables.email_logs = this.tables.email_logs.filter((r) => !ids.has(r.lead_id));
+      this.tables.email_logs = this.tables.email_logs.filter(r => !ids.has(r.lead_id) || ['SENT', 'BOUNCED'].includes(String(r.status)));
+      for (const log of this.tables.email_logs) if (ids.has(log.lead_id)) Object.assign(log, { lead_id: null, subject: '(Deleted lead)', body_html: '', error: null });
       this.tables.tracking_events = this.tables.tracking_events.filter((r) => !ids.has(r.lead_id));
     }
     if (table === "email_logs") for (const ev of this.tables.tracking_events) if (ids.has(ev.email_log_id)) ev.email_log_id = null;

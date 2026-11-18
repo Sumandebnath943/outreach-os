@@ -1,6 +1,6 @@
 # OutreachOS
 
-> **Local upgrade:** this version needs migration **013_lead_management.sql** before deployment. See [upgrade instructions](docs/UPGRADE_013.md). Email prechecks are deferred.
+> **Current upgrade:** apply migrations through **015_preserve_send_quota.sql**. See [prechecks, design and production validation](docs/UPGRADE_014.md). Free built-in checks are included; Reoon remains deferred.
 
 A self-hosted job search and cold outreach funnel CRM for **Suman Debnath**. It is aimed at Senior Brand Marketing Manager, AI PMM and AI PM roles in India and the US.
 
@@ -36,6 +36,7 @@ Next.js 15 (App Router) · Supabase Postgres · Gmail API (OAuth2) / Resend · T
 ### Dashboard views
 - **`/` Pipeline:** an 8-column drag-and-drop Kanban. Each card shows Geo, Track, Touch, and Opens/Clicks/Pages counts. Click a card to open the Lead Dossier drawer. It shows the sent thread, the telemetry timeline, the stage and sub-stage, reply triage actions, notes, and pause/resume controls.
 - **`/approvals`:** paginated Pending/Approved/Held tables with exact totals and message review drawers. Approve selected or all matching contacts across pages. Approval does not run the worker.
+- **`/prechecks`:** syntax, DNS mail routing and suppression checks before approval/sending, with reasons, warnings, automatic retries and paginated bulk processing. Passed means domain routing exists; it does not verify a mailbox.
 - **`/leads`:** searchable, filterable and sortable paginated directory; bulk pause, archive, export and Trash. Dedicated `/leads/:id` details pages. Trash is retained for 30 days; restored records remain paused.
 - **`/import`:** drag-and-drop CSV import with automatic header mapping, a duplicate preview, Geo/Track overrides, and a sample CSV.
 - **`/templates` Sequence Studio:** edit T1, T2A (warm), T2B (cold), T3 and T4 for each role track, with a live preview. Role tracks inherit `HYBRID_DEFAULT` until you fork a touch.
@@ -123,7 +124,7 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001` through `013`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `015`.
    A database set up earlier only needs the ones it hasn't run yet. They are all safe to re-run.
    - `006` installs the best-practice master sequence (see `docs/TEMPLATE_PROPOSAL.md`).
    - `007` adds the Telegram digest bookkeeping.

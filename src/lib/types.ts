@@ -130,7 +130,7 @@ export interface Lead {
 
 export interface EmailLog {
   id: string;
-  lead_id: string;
+  lead_id: string | null;
   touch_number: number;
   branch_variant: BranchVariant;
   subject: string;
