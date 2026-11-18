@@ -145,7 +145,15 @@ cp .env.example .env.local
 ```
 Fill in `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_BASE_URL` (your public URL), `CRON_SECRET`, `TRACKING_SECRET` and `DASHBOARD_PASSWORD`. Generate secrets with `openssl rand -hex 32`.
 
-In production the dashboard **refuses to start open**: without `DASHBOARD_PASSWORD`, every page and management API returns 503. Pages that change data only accept requests from the dashboard's own origin, which blocks CSRF.
+**Signing in:**
+- `/` is a public home page with a sign-in form, plus links to the Privacy policy and Terms.
+- Signing in with `DASHBOARD_USER` / `DASHBOARD_PASSWORD` sets a signed, HttpOnly 30-day session cookie. Changing the password signs everyone out.
+- The dashboard lives at `/pipeline` and the other app routes. Signed-out visits are sent to `/?next=…` and return there after signing in.
+- HTTP Basic credentials still work, for scripts.
+- Optional: set `SESSION_SECRET` to rotate sessions without changing the password.
+- Brand name, tagline and owner are set in `src/lib/brand.ts` (white-label).
+
+In production the dashboard **refuses to start open**: without `DASHBOARD_PASSWORD`, every app page and management API returns 503. Requests that change data only accept requests from the dashboard's own origin, which blocks CSRF.
 
 ### 3. Gmail API (OAuth2)
 1. In Google Cloud Console, create a project and enable the **Gmail API**.

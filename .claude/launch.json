@@ -13,6 +13,13 @@
       "runtimeArgs": ["next", "dev", "-p", "3100"],
       "port": 3100,
       "env": { "DASHBOARD_PASSWORD": "" }
+    },
+    {
+      "name": "outreach-os-home-check",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "-p", "3101"],
+      "port": 3101,
+      "env": { "DASHBOARD_USER": "preview", "DASHBOARD_PASSWORD": "preview-only-not-real" }
     }
   ]
 }

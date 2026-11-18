@@ -20,7 +20,7 @@ export function Board() {
   const [track, setTrack] = useState("");
   const [over, setOver] = useState<FunnelStage | null>(null);
 
-  // Deep link from Telegram alerts: /?lead=<id> opens that lead's dossier.
+  // Deep link from Telegram alerts: /pipeline?lead=<id> opens that lead’s dossier.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("lead");
     if (id && UUID_RE.test(id)) setOpenId(id);

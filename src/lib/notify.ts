@@ -16,7 +16,7 @@ export function gmailUrl(mailbox: string | null | undefined, id: string): string
 
 /** Opens the lead's dossier drawer on the pipeline board. */
 export function dossierUrl(appBase: string, leadId: string): string {
-  return `${appBase.replace(/\/$/, "")}/?lead=${encodeURIComponent(leadId)}`;
+  return `${appBase.replace(/\/$/, "")}/pipeline?lead=${encodeURIComponent(leadId)}`;
 }
 
 const SENTIMENT: Record<string, { icon: string; title: string }> = {

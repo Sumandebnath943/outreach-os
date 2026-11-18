@@ -20,7 +20,7 @@ describe("links", () => {
   it("opens the thread in the right Gmail account and the dossier on the board", () => {
     expect(gmailUrl("me@example.com", "18c0ffee")).toBe("https://mail.google.com/mail/?authuser=me%40example.com#all/18c0ffee");
     expect(gmailUrl(null, "abc")).toBe("https://mail.google.com/mail/#all/abc");
-    expect(alert.dossierLink).toBe("https://app.example.com/?lead=11111111-1111-4111-8111-111111111111");
+    expect(alert.dossierLink).toBe("https://app.example.com/pipeline?lead=11111111-1111-4111-8111-111111111111");
   });
 });
 

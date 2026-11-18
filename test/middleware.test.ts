@@ -1,63 +1,93 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { middleware } from "@/middleware";
+import { createSessionToken, safeNext, SESSION_COOKIE, sessionKey, verifySessionToken } from "@/lib/session";
 
 const req = (path: string, init: { method?: string; headers?: Record<string, string> } = {}) =>
   new NextRequest(new URL(path, "https://crm.example.com"), { method: init.method ?? "GET", headers: { host: "crm.example.com", ...init.headers } });
 
 const basic = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString("base64")}`;
 const passed = (res: Response) => res.headers.get("x-middleware-next") === "1";
+const location = (res: Response) => res.headers.get("location");
+
+async function sessionCookie(user = "admin", password = "pw") {
+  const key = sessionKey({ password, cronSecret: process.env.CRON_SECRET })!;
+  return `${SESSION_COOKIE}=${await createSessionToken(user, key)}`;
+}
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("dashboard auth", () => {
-  it("keeps tracking, cron and legal pages public", () => {
+describe("public routes", () => {
+  it("keeps the home page, sign-in, legal pages, tracking and cron public", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "pw");
-    expect(passed(middleware(req("/api/track/open?l=x")))).toBe(true);
-    expect(passed(middleware(req("/api/cron/process-queue", { method: "POST" })))).toBe(true);
-    expect(passed(middleware(req("/privacy-policy")))).toBe(true);
-    expect(passed(middleware(req("/terms/")))).toBe(true);
-    // only the exact pages — not anything that merely starts with the same name
-    expect(middleware(req("/terms-and-more")).status).toBe(401);
-    expect(middleware(req("/privacy-policy/../api/leads")).status).toBe(401);
+    for (const p of ["/", "/privacy-policy", "/terms/", "/api/track/open?l=x", "/api/auth/login", "/api/auth/logout"]) {
+      expect(passed(await middleware(req(p, { method: p.startsWith("/api/auth") ? "POST" : "GET" }))), p).toBe(true);
+    }
+    expect(passed(await middleware(req("/api/cron/process-queue", { method: "POST" })))).toBe(true);
+    expect((await middleware(req("/terms-and-more"))).status).toBe(307); // only the exact pages
+  });
+});
+
+describe("signed-out visitors", () => {
+  it("are sent to the home page (with a way back) instead of a browser password popup", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "pw");
+    const page = await middleware(req("/analytics?range=7"));
+    expect(page.status).toBe(307);
+    expect(location(page)).toBe("https://crm.example.com/?next=%2Fanalytics%3Frange%3D7");
+    const api = await middleware(req("/api/leads"));
+    expect(api.status).toBe(401);
+    expect(api.headers.get("www-authenticate")).toBeNull();
   });
 
-  it("stays public for legal pages even when production has no password", () => {
+  it("refuses to run open in production", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "");
     vi.stubEnv("NODE_ENV", "production");
-    expect(passed(middleware(req("/privacy-policy")))).toBe(true);
+    expect((await middleware(req("/api/leads"))).status).toBe(503);
+    expect(passed(await middleware(req("/")))).toBe(true); // home page still renders
+  });
+});
+
+describe("signed-in visitors", () => {
+  it("get in with a valid session cookie, and the home page forwards them to the pipeline", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "pw");
+    const cookie = await sessionCookie();
+    expect(passed(await middleware(req("/settings", { headers: { cookie } })))).toBe(true);
+    const home = await middleware(req("/?lead=abc", { headers: { cookie } }));
+    expect(location(home)).toBe("https://crm.example.com/pipeline?lead=abc"); // old Telegram links keep working
   });
 
-  it("requires Basic credentials when a password is set", () => {
+  it("reject forged, expired or stale-password cookies", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "pw");
+    expect((await middleware(req("/api/leads", { headers: { cookie: `${SESSION_COOKIE}=9999999999999.forged` } }))).status).toBe(401);
+    const old = await sessionCookie("admin", "old-password"); // password changed since
+    expect((await middleware(req("/api/leads", { headers: { cookie: old } }))).status).toBe(401);
+    const key = sessionKey({ password: "pw" })!;
+    expect(await verifySessionToken(await createSessionToken("admin", key, 0), "admin", key)).toBe(false); // expired
+  });
+
+  it("still accept Basic credentials for scripts", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "pä55");
     vi.stubEnv("DASHBOARD_USER", "suman");
-    expect(middleware(req("/")).status).toBe(401);
-    expect(middleware(req("/", { headers: { authorization: basic("suman", "wrong") } })).status).toBe(401);
-    expect(passed(middleware(req("/", { headers: { authorization: basic("suman", "pä55") } })))).toBe(true);
-  });
-
-  it("refuses to run open in production", () => {
-    vi.stubEnv("DASHBOARD_PASSWORD", "");
-    vi.stubEnv("NODE_ENV", "production");
-    expect(middleware(req("/api/leads")).status).toBe(503);
+    expect(passed(await middleware(req("/api/stats", { headers: { authorization: basic("suman", "pä55") } })))).toBe(true);
+    expect((await middleware(req("/api/stats", { headers: { authorization: basic("suman", "nope") } }))).status).toBe(401);
   });
 });
 
 describe("CSRF guard", () => {
-  it("blocks cross-site state changes even with valid credentials", () => {
+  it("blocks cross-site state changes even with a valid session", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "pw");
-    const auth = basic("admin", "pw");
-    const crossSite = middleware(req("/api/queue/run", { method: "POST", headers: { authorization: auth, "sec-fetch-site": "cross-site" } }));
-    expect(crossSite.status).toBe(403);
-    const foreignOrigin = middleware(req("/api/leads/import", { method: "POST", headers: { authorization: auth, origin: "https://evil.example" } }));
-    expect(foreignOrigin.status).toBe(403);
+    const cookie = await sessionCookie();
+    expect((await middleware(req("/api/queue/run", { method: "POST", headers: { cookie, "sec-fetch-site": "cross-site" } }))).status).toBe(403);
+    expect((await middleware(req("/api/auth/login", { method: "POST", headers: { origin: "https://evil.example" } }))).status).toBe(403);
+    expect(passed(await middleware(req("/api/leads", { method: "PATCH", headers: { cookie, "sec-fetch-site": "same-origin" } })))).toBe(true);
   });
+});
 
-  it("allows same-origin writes and cross-site reads", () => {
-    vi.stubEnv("DASHBOARD_PASSWORD", "pw");
-    const auth = basic("admin", "pw");
-    expect(passed(middleware(req("/api/leads", { method: "PATCH", headers: { authorization: auth, "sec-fetch-site": "same-origin" } })))).toBe(true);
-    expect(passed(middleware(req("/api/leads", { method: "POST", headers: { authorization: auth, origin: "https://crm.example.com" } })))).toBe(true);
-    expect(passed(middleware(req("/", { headers: { authorization: auth, "sec-fetch-site": "cross-site" } })))).toBe(true);
+describe("safeNext", () => {
+  it("only allows same-site relative paths", () => {
+    expect(safeNext("/analytics?range=7")).toBe("/analytics?range=7");
+    expect(safeNext("//evil.example")).toBe("/pipeline");
+    expect(safeNext("https://evil.example")).toBe("/pipeline");
+    expect(safeNext(null)).toBe("/pipeline");
   });
 });

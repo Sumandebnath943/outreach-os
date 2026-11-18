@@ -609,7 +609,7 @@ describe("end-to-end pipeline simulation", () => {
     const replyThread = sim.gmail.messages.find((m) => m.snippet.startsWith("Thanks Suman"))!.threadId;
     expect(replyThread).not.toBe(sim.lead(hot).gmail_thread_id);
     expect(hotMsg).toContain(`https://mail.google.com/mail/?authuser=${encodeURIComponent(SENDER)}#all/${replyThread}`);
-    expect(hotMsg).toContain(`https://outreachos.houseofnamus.com/?lead=${sim.lead(hot).id}`);
+    expect(hotMsg).toContain(`https://outreachos.houseofnamus.com/pipeline?lead=${sim.lead(hot).id}`);
     expect(alerts.find((m) => m.includes("Nimbus"))!.startsWith("🌴")).toBe(true);
     expect(alerts.find((m) => m.includes("Orbit"))!.startsWith("✋")).toBe(true);
 

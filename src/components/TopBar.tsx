@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Activity, Bot, Hand, RefreshCw } from "lucide-react";
+import { Activity, Bot, Hand, LogOut, RefreshCw } from "lucide-react";
+
+async function signOut() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    window.location.assign("/");
+  }
+}
 import { api, broadcastRefresh, usePoll } from "@/lib/client";
 import { cn, relTime } from "@/lib/utils";
 import { touchLabel } from "@/lib/meta";
@@ -11,7 +19,7 @@ import type { DashboardStats, ExecutionMode, QueueReport } from "@/lib/types";
 import { Button, Metric, toast } from "./ui";
 
 const NAV = [
-  { href: "/", label: "Pipeline" },
+  { href: "/pipeline", label: "Pipeline" },
   { href: "/approvals", label: "Approvals" },
   { href: "/analytics", label: "Analytics" },
   { href: "/import", label: "Import" },
@@ -69,7 +77,7 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
       <div className="flex h-12 items-center gap-4 border-b border-line px-5 lg:gap-6">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/pipeline" className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded border border-line bg-card">
             <Activity className="h-3.5 w-3.5" />
           </div>
@@ -77,7 +85,7 @@ export function TopBar() {
         </Link>
         <nav className="flex items-center gap-1">
           {NAV.map((n) => {
-            const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
+            const active = pathname.startsWith(n.href);
             return (
               <Link
                 key={n.href}
@@ -125,6 +133,14 @@ export function TopBar() {
             <span className="hidden lg:inline">Sync Replies &amp; Run Queue</span>
             <span className="lg:hidden">Run Queue</span>
           </Button>
+          <button
+            onClick={signOut}
+            title="Sign out"
+            aria-label="Sign out"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-dim transition-colors hover:bg-raised hover:text-fg"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-x-6 gap-y-2 px-5 py-2.5 md:grid-cols-6">
