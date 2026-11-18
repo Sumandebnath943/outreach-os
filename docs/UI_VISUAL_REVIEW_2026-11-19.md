@@ -109,7 +109,18 @@ These mappings are reused in Templates, Leads, Approvals and Analytics. Shared d
 - Viewport review covers 320px, 390px, 768px and 1440px. The original sign-in, approval paging/editor and Trash/restore browser regressions also run.
 - All **18 semantic chip contrast pairs** passed on charcoal and ivory surfaces; the lowest measured ratio was **5.25:1**, above the [4.5:1 normal-text criterion](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html). This is a scoped chip-text check, not a whole-app accessibility certification.
 
-The original browser regression suite also passed its nine check groups, including 1,300-contact approval paging, approve-all without dispatch, a single-message editor, dedicated details and paused Trash/restore. Browser runs produced zero uncaught page errors. Live deployment verification is recorded after publication. Screenshots and test reports are generated under ignored `test-results/`; populated screenshots are synthetic examples, not production campaign statistics.
+The original browser regression suite also passed its nine check groups, including 1,300-contact approval paging, approve-all without dispatch, a single-message editor, dedicated details and paused Trash/restore. Browser runs produced zero uncaught page errors. Screenshots and test reports are generated under ignored `test-results/`; populated screenshots are synthetic examples, not production campaign statistics.
+
+### Production verification
+
+App commits `03f378f` (branding/theme refinement) and `09f1af1` (database-backed Gmail action wrapping) both passed GitHub CI and Vercel deployment. The final live review passed **37 checks with zero uncaught page errors**:
+
+- Signal Arc emblem/wordmark outside the sign-in card and the matching favicon.
+- All eight dashboard pages at 1440px, plus all eight at each of 320px, 390px and 768px.
+- Eight distinct pipeline stage identities and the compact Templates selectors/secondary controls.
+- Real sign-in, sign-out and protected-route redirect.
+
+The production browser blocked management mutations other than login/logout. It recorded **zero lead/settings mutations** and triggered no queue run, template save, connection change or test alert. Local bulk-check/template/Trash interactions used intercepted synthetic fixtures. The complete live result is `test-results/production-browser-theme.json`; the final local result is `test-results/ui-theme-review.json`.
 
 ## Overall assessment
 
