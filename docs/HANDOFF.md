@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger palette to the existing dashboard layout and replacing the public homepage with a minimal sign-in screen. Lint, types, 153 tests, production build and isolated desktop/mobile browser checks passed; deployment verification follows the push.
+Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger palette to the existing dashboard layout and replacing the public homepage with a minimal sign-in screen. Lint, types, 153 tests, production build and isolated desktop/mobile browser checks passed. App commit `1d63c08` passed CI and Vercel deployment; all 13 live browser checks passed with zero page errors.
 
 ---
 
@@ -22,11 +22,11 @@ Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger pa
 | Gmail | Connected (OAuth, `gmail.send` + `gmail.readonly`) |
 | Telegram | Working: reply alerts and 09:30 IST digest |
 | Groq AI | Working: reply triage (`openai/gpt-oss-20b`) |
-| CI | GitHub Actions `CI` green on `4fb44da` (lint + types + 153 tests + build) |
-| Deploy | Vercel deployed `4fb44da`. Real production send, tracking, positive reply, OOO/resume and cleanup verified. 21 functional check groups and 13 browser checks passed; see upgrade report |
+| CI | GitHub Actions `CI` green on `1d63c08` (lint + types + 153 tests + build) |
+| Deploy | Vercel deployed `1d63c08` with Night Ledger colors and minimal sign-in. All 13 live browser checks passed on 19 Nov, including management pages, four mobile layouts and sign-in/out. Prior functional sending/cleanup validation remains recorded in the upgrade report |
 | Tests | Local lint, typecheck, all **153 tests in 14 files** (113 unit + 40 simulation scenarios), and production build passed during this upgrade (final results below). `npm run simulate` runs only the 40 scenarios |
 | Leads in prod | **0 active/archived leads, 0 Trash rows, 0 test import reports.** All 299 originals and all test fixtures were removed at the owner's request. The original bounce suppression remains. A private ignored local backup is available. |
-| Quota after testing | **22 actual sends today: 21 test + 1 original outreach (bounced).** This includes 12 new production test emails. Original 10/day warm-up cap is restored; deletion does not reset quota. Sent records retain minimal accounting with lead association/content removed. |
+| Quota after 18 Nov testing | **22 actual sends on 18 Nov: 21 test + 1 original outreach (bounced).** This includes 12 new production test emails. Original 10/day warm-up cap is restored; deletion does not reset quota. Sent records retain minimal accounting with lead association/content removed. |
 | Production verification | Real Gmail sending/threading, signed click tracking, warm/cold branches, positive reply kill switch, OOO deferred resume/accelerated next touch, nurture, Telegram, import/approvals/paging/CRUD/auth, deletion and quota checks passed. Bounce/delay parsing is covered by automated simulations; production suppression was exercised with a controlled non-sending fixture. |
 
 ### Open watch item
@@ -157,5 +157,5 @@ npm install --package-lock-only
 | 2026-11-18 | `f0c922f` | Owner confirmed migration 013 and authorized push. CI and Vercel succeeded; twelve read-only production page/API checks and schema checks passed. Counts: 299 leads, 294 approved, zero pending, quota 9 test + 1 outreach = 10/10. No sends, approvals or live worker runs triggered. |
 | 2026-11-18 | (upgrade 014) | Built free prechecks and a light workspace based on reviewed Linear/Attio/Carbon guidance; owner selected light direction. 150 tests and production build pass. All 299 original leads removed after private backup; suppression retained. Production E2E validation in progress. |
 | 2026-11-18 | `8957fcd`, `4fb44da` | Deployed free prechecks/light workspace, then final dispatch guards and deletion quota fix. 153 tests + CI/build green; 12 real emails only to test-inbox aliases. Real positive/OOO replies, resumed touch, both T2 branches, four-touch threading, tracking, management, auth and Telegram verified. All original/test leads removed, original settings restored; quota 22/10 remains accurate after deletion. |
-| 2026-11-19 | (Night Ledger theme) | Kept all dashboard structure/controls intact and applied warm charcoal/ivory/brass tokens with eight distinct stage identities and readable status colors. Replaced the homepage with owner-selected minimal sign-in. Lint/types, all 153 tests, production build, local sign-in/error handling, paging/drafts/Trash and desktop/mobile checks passed. No data, queue, sending logic or settings changed. |
+| 2026-11-19 | `1d63c08` | Kept all dashboard structure/controls intact and applied warm charcoal/ivory/brass tokens with eight distinct stage identities and readable status colors. Replaced the homepage with owner-selected minimal sign-in. Lint/types, all 153 tests, production build, local sign-in/error handling, paging/drafts/Trash and desktop/mobile checks passed. No data, queue, sending logic or settings changed. CI/Vercel green; all 13 live browser checks passed with zero page errors. |
 | earlier | — | See `git log` |
