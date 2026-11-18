@@ -1,7 +1,7 @@
 import "server-only";
 import { auth as gauth, gmail as gmailApi, type gmail_v1 } from "@googleapis/gmail";
 import { env } from "./env";
-import { decodeEntities, isAuthErrorMessage } from "../signals";
+import { classifyDsn, decodeEntities, isAuthErrorMessage } from "../signals";
 import type { Lead, SystemSettings } from "../types";
 
 export const GMAIL_SCOPES = [
@@ -118,7 +118,11 @@ export async function checkInbound(
         const from = header(msg, "From") ?? "";
         if (addressOf(from) === me) continue;
         const snippet = decodeEntities(msg.snippet ?? "");
-        if (BOUNCE_RE.test(from)) return { kind: "BOUNCE", snippet, at: toIso(msg.internalDate) };
+        if (BOUNCE_RE.test(from)) {
+          // a "still retrying" delay notice is not a bounce — keep looking
+          if (classifyDsn(header(msg, "Subject") ?? "", snippet) === "DELAY") continue;
+          return { kind: "BOUNCE", snippet, at: toIso(msg.internalDate) };
+        }
         return { kind: "REPLY", snippet, at: toIso(msg.internalDate), from, gmailMessageId: msg.id!, gmailThreadId: msg.threadId ?? lead.gmail_thread_id };
       }
     } catch (e: unknown) {
@@ -149,16 +153,19 @@ export async function checkInbound(
     }
   }
 
+  // Newest first; delay notices ("still retrying") are skipped — only a final failure is a bounce.
   const bounceSearch = await gmail.users.messages.list({
     userId: "me",
     q: `from:(mailer-daemon OR postmaster) after:${after} "${lead.email}"`,
-    maxResults: 1,
+    maxResults: 5,
   });
-  const bounce = bounceSearch.data.messages?.[0];
-  if (bounce?.id) {
-    const msg = await gmail.users.messages.get({ userId: "me", id: bounce.id, format: "minimal" });
-    if (isAfter(msg.data.internalDate, since)) {
-      return { kind: "BOUNCE", snippet: decodeEntities(msg.data.snippet ?? ""), at: toIso(msg.data.internalDate) };
+  for (const hitDsn of bounceSearch.data.messages ?? []) {
+    if (!hitDsn.id) continue;
+    const msg = await gmail.users.messages.get({ userId: "me", id: hitDsn.id, format: "metadata", metadataHeaders: ["Subject"] });
+    if (!isAfter(msg.data.internalDate, since)) break;
+    const snippet = decodeEntities(msg.data.snippet ?? "");
+    if (classifyDsn(header(msg.data, "Subject") ?? "", snippet) === "FAILURE") {
+      return { kind: "BOUNCE", snippet, at: toIso(msg.data.internalDate) };
     }
   }
 

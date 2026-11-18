@@ -120,10 +120,12 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001` through `007`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `009`.
    A database set up earlier only needs the ones it hasn't run yet. They are all safe to re-run.
    - `006` installs the best-practice master sequence (see `docs/TEMPLATE_PROPOSAL.md`).
    - `007` adds the Telegram digest bookkeeping.
+   - `008` makes Auto-Pilot the default.
+   - `009` schedules the worker with Supabase Cron (see step 6). Fill in its two placeholders in the SQL Editor first.
    - `005` grants table access to the server role. Supabase projects created since mid-2026 no longer do this automatically. Without it, the app fails with *"permission denied for table system_settings"*.
 2. Copy two values into your environment:
    - The **Project URL**, from *Project Settings → Data API* or the **Connect** button.
@@ -175,17 +177,18 @@ Before pushing, run lint, type check and unit tests in one go:
 npm run check
 ```
 
-### 6. Deploy + cron
-Deploy to Vercel and set the same env vars. Then pick one way to schedule the worker:
+### 6. Deploy + schedule the worker
+Deploy to Vercel and set the same env vars. Then schedule the worker with **Supabase Cron**, using migration `009`. It's free, runs on time inside your database, and uses no GitHub Actions minutes. It calls `/api/cron/process-queue`:
+- every **10 minutes Monday–Friday**, for sends, reply detection, alerts and the digest;
+- **hourly on weekends**, for reply detection and Telegram alerts only. Nothing is sent at weekends.
 
-- **GitHub Actions (works on the free tier):** `.github/workflows/outreach-cron.yml` runs `*/10 * * * 1-5`. Add the repository secrets `OUTREACH_OS_URL` and `CRON_SECRET`.
-- **Vercel Cron (Pro plan only):** Hobby crons can run at most once a day. Add this `vercel.json`:
-  ```json
-  { "crons": [{ "path": "/api/cron/process-queue", "schedule": "*/10 * * * 1-5" }] }
-  ```
-  Vercel sends `Authorization: Bearer $CRON_SECRET` automatically.
+Why not GitHub Actions or Vercel Cron:
+- **GitHub's `schedule` trigger is best-effort.** Runs are delayed or dropped under load: in testing, about 5 of ~700 scheduled runs actually happened in a week. `.github/workflows/outreach-cron.yml` now only provides a manual **Run workflow** button.
+- **Vercel Cron on the Hobby plan** can run at most once a day.
 
-With one email per 3–6 minute jitter slot and a run every 10 minutes, a day yields about 45 sends inside an 8-hour window. Run the cron more often, every 5 minutes, if you want the jitter to be the real limiter.
+Why every 10 minutes matters:
+- **Pacing:** the worker sends **one email per run**, to keep the human 3–6 minute spacing between sends. 10-minute runs give about 45 sends across an 8-hour window.
+- **Reply speed:** replies are detected within 10 minutes. Running only a few times a day would cap sending at a couple of emails per day per region and delay reply alerts by hours.
 
 ### 7. Portfolio telemetry
 Copy `docs/PORTFOLIO_SNIPPET.md` into the portfolio repo (Settings shows a copy with your URL filled in). Mount `<PortfolioTracker />` in `app/layout.tsx`. Then add the portfolio origin to `PORTFOLIO_ALLOWED_ORIGINS`.
@@ -222,8 +225,8 @@ The fully offline equivalent is `npm run simulate`. It runs 19 scenarios on a fa
 
 ## Daily operation
 1. Import a CSV in **Import**. New leads land in `LEAD_QUEUED` with Touch 1 due right away.
-2. Each morning in **Approval Gate** mode, open **Approvals**, tweak any drafts, and click **Approve & Dispatch Batch**. The worker then sends approved emails one by one inside each recipient's window.
-   In **Auto-Pilot** mode, due touches send without approval.
+2. **Auto-Pilot**, the default, sends due touches automatically inside each recipient's window. Replies are synced and the queue is run automatically on every worker run; the **Sync Replies & Run Queue** button just triggers a run immediately.
+   Switch to **Approval Gate** in the top bar if you want to approve each email first: open **Approvals**, tweak any drafts, and click **Approve & Dispatch Batch**.
 3. Watch for amber flame cards. These are warm leads, and they automatically get T2A.
 4. When Telegram pings a reply, tap **Open in Gmail** and answer it yourself. OutreachOS never writes back on your behalf.
 5. Triage the lead in its dossier with **Call booked → Interviewing**, **Not now → Nurture**, or **Rejected**.

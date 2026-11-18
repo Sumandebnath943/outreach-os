@@ -7,7 +7,7 @@ create extension if not exists "uuid-ossp";
 create table public.system_settings (
   id int primary key default 1 check (id = 1),
   send_provider text not null default 'GMAIL' check (send_provider in ('GMAIL', 'RESEND')),
-  execution_mode text not null default 'APPROVAL_GATE' check (execution_mode in ('AUTO_PILOT', 'APPROVAL_GATE')),
+  execution_mode text not null default 'AUTO_PILOT' check (execution_mode in ('AUTO_PILOT', 'APPROVAL_GATE')),
   daily_send_limit int not null default 45,
   min_delay_minutes int not null default 3,
   max_delay_minutes int not null default 6,

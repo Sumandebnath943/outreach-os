@@ -290,14 +290,18 @@ export class Sim {
     this.note(`📩 ${opts.inThread === false ? "New email (not a reply)" : "Reply"} from lead: “${snippet}”`);
   }
 
-  bounce(email = LEAD_EMAIL) {
+  /** A mailer-daemon notice in the thread: a final failure (bounce) or a "still retrying" delay. */
+  bounce(email = LEAD_EMAIL, kind: "failure" | "delay" = "failure") {
+    const delay = kind === "delay";
     this.gmail.receive({
       from: "Mail Delivery Subsystem <mailer-daemon@googlemail.com>",
-      snippet: `Address not found. Your message wasn't delivered to ${email} because the address couldn't be found.`,
+      snippet: delay
+        ? `Delivery incomplete. There was a temporary problem delivering your message to ${email}. Gmail will retry for 47 more hours.`
+        : `Address not found. Your message wasn't delivered to ${email} because the address couldn't be found.`,
       threadId: this.lead(email).gmail_thread_id,
-      subject: "Delivery Status Notification (Failure)",
+      subject: delay ? "Delivery Status Notification (Delay)" : "Delivery Status Notification (Failure)",
     });
-    this.note("📩 Bounce notice (mailer-daemon) arrives in the thread");
+    this.note(delay ? "📩 Delay notice (mailer-daemon, “will retry”) arrives in the thread" : "📩 Bounce notice (mailer-daemon, “address not found”) arrives in the thread");
   }
 
   async patch(body: Record<string, unknown>, email = LEAD_EMAIL): Promise<Lead> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyReply, decodeEntities, detectBot, isAuthErrorMessage, isHardBounceMessage } from "@/lib/signals";
+import { classifyDsn, classifyReply, decodeEntities, detectBot, isAuthErrorMessage, isHardBounceMessage } from "@/lib/signals";
 
 const CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
@@ -39,6 +39,26 @@ describe("detectBot", () => {
   it("treats Gmail's image proxy as a genuine open", () => {
     const gmailProxy = "Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)";
     expect(detectBot({ userAgent: gmailProxy, sentAt, logPending: false, now: new Date("2026-11-16T11:00:00Z") })).toBeNull();
+  });
+});
+
+describe("classifyDsn", () => {
+  it("treats final delivery failures as bounces", () => {
+    expect(classifyDsn("Delivery Status Notification (Failure)", "Address not found. Your message wasn't delivered to x@y.com because the address couldn't be found")).toBe("FAILURE");
+    expect(classifyDsn("Undeliverable: Open roles?", "Delivery has failed to these recipients or groups")).toBe("FAILURE");
+    expect(classifyDsn("Mail delivery failed", "550 5.1.1 The email account that you tried to reach does not exist")).toBe("FAILURE");
+    expect(classifyDsn("Delivery Status Notification", "Message not delivered. Your message couldn't be delivered to x@y.com")).toBe("FAILURE");
+    expect(classifyDsn("Message blocked", "Your message was blocked by the recipient's server (5.7.1 spam policy)")).toBe("FAILURE");
+  });
+
+  it("ignores delay notices while the server is still retrying", () => {
+    expect(classifyDsn("Delivery Status Notification (Delay)", "Delivery incomplete. There was a temporary problem delivering your message to x@y.com. Gmail will retry for 47 more hours.")).toBe("DELAY");
+    expect(classifyDsn("Warning: message delayed", "421 4.7.0 Temporarily deferred, will be retried")).toBe("DELAY");
+    expect(classifyDsn("Notice", "Message not delivered yet — still trying")).toBe("DELAY");
+  });
+
+  it("defaults unknown wording to a failure", () => {
+    expect(classifyDsn("Returned", "Something went wrong")).toBe("FAILURE");
   });
 });
 

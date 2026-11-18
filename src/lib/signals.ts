@@ -65,6 +65,26 @@ export function detectBot(input: {
   return null;
 }
 
+/**
+ * Classifies a delivery status notification (mailer-daemon / postmaster message).
+ *  - FAILURE: the message was not delivered and won't be (address not found, rejected,
+ *    blocked, "message not delivered", "undeliverable", 5.x.x codes…) → treat as a bounce.
+ *  - DELAY:   the server is still retrying ("Delivery Status Notification (Delay)",
+ *    "temporary problem", "will retry", 4.x.x codes) → not a bounce; a FAILURE notice follows
+ *    if delivery finally gives up.
+ * Unknown wording defaults to FAILURE, since continuing to email a dead address hurts sender reputation.
+ */
+export function classifyDsn(subject: string, snippet: string): "FAILURE" | "DELAY" {
+  const s = `${subject} ${decodeEntities(snippet)}`.toLowerCase();
+  const failure =
+    /\(failure\)|undeliverable|delivery (has )?failed|failure notice|returned mail|address not found|could ?n[o']t be found|could not be delivered|could ?n[o']t be delivered|was ?n[o']t delivered|message not delivered(?! yet)|does ?n[o']t exist|user unknown|unknown user|no such user|mailbox (unavailable|not found|does not exist|disabled)|recipient (address )?rejected|rejected|blocked|permanent(ly)?|gave up|\b5\.\d{1,3}\.\d{1,3}\b|\b55[0-4]\b/;
+  const delay =
+    /\(delay\)|delayed|not (been )?delivered yet|delivery incomplete|temporar(y|ily)|will (be )?retr(y|ied)|retrying|still trying|deferred|\b4\.\d{1,3}\.\d{1,3}\b|\b4[25]\d\b/;
+  if (failure.test(s)) return "FAILURE";
+  if (delay.test(s)) return "DELAY";
+  return "FAILURE";
+}
+
 /** Provider rejected the recipient address itself — retrying cannot help. */
 export function isHardBounceMessage(msg: string): boolean {
   return /invalid to header|invalid recipient|invalid `?to`?|recipient address rejected|address not found|no such user|mailbox unavailable|user unknown/i.test(

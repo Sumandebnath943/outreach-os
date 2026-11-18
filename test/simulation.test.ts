@@ -302,11 +302,15 @@ describe("end-to-end pipeline simulation", () => {
   });
 
   it("S7 · bounce archives the lead and locks the address against re-import", async () => {
-    const sim = new Sim("S7 · Hard bounce", MON_0830_IST);
+    const sim = new Sim("S7 · Delay notice ignored, then a hard bounce", MON_0830_IST);
     await sim.importLead();
     await sim.runUntil(() => sim.touches().length === 1);
     sim.advance(5 * 60_000);
-    sim.bounce();
+    sim.bounce(LEAD_EMAIL, "delay");
+    await sim.runFor(1);
+    expect(sim.lead()).toMatchObject({ funnel_stage: "OUTREACH_ACTIVE", sequence_active: true }); // still retrying ≠ bounce
+
+    sim.bounce(LEAD_EMAIL, "failure");
     await sim.cron();
     expect(sim.lead()).toMatchObject({ funnel_stage: "CLOSED_ARCHIVE", sub_stage: "BOUNCED", sequence_active: false });
     expect(sim.logs()[0].status).toBe("BOUNCED");
@@ -317,7 +321,8 @@ describe("end-to-end pipeline simulation", () => {
     expect(sim.touches()).toHaveLength(1);
 
     record(sim, [
-      "Mailer-daemon notice in the thread → CLOSED_ARCHIVE / BOUNCED, email log marked BOUNCED",
+      "A “Delivery Status Notification (Delay) — will retry” notice was ignored; the lead stayed active",
+      "The later “Address not found” failure → CLOSED_ARCHIVE / BOUNCED, email log marked BOUNCED",
       "Re-importing the same address is reported as LOCKED; nothing further is sent",
     ]);
   });
