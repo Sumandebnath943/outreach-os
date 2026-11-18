@@ -12,6 +12,8 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     environment: "node",
+    // Simulation scenarios replay weeks of 10-minute worker runs; give them room on slow CI machines.
+    testTimeout: 60_000,
     // Fixed zone so date maths is deterministic regardless of the machine running the tests.
     env: { TZ: "UTC" },
   },

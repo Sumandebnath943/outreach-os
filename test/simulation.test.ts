@@ -129,8 +129,27 @@ describe("end-to-end pipeline simulation", () => {
     expect(h(0, "Subject")).toBe("Marketer who builds AI — Acme AI?");
     expect(msgs[0].text).toMatch(/^Hi Suman,/);
     expect(msgs[0].text).toContain("Open to a 15-minute call about AI Product Marketing Manager roles at Acme AI?");
-    const words = (s: string) => s.replace(/https?:\/\/\S+/g, "").split(/\s+/).filter(Boolean).length;
-    expect(words(msgs[0].text)).toBeLessThanOrEqual(125);
+    const words = (s: string) => s.replace(/\(?https?:\/\/\S+\)?/g, "").split(/\s+/).filter(Boolean).length;
+    expect(words(msgs[0].text.split("\nBest,")[0])).toBeLessThanOrEqual(125); // body, excluding the signature
+
+    // Signature: clickable words, no bare URLs, tracked links with ref + UTM (LinkedIn tracked, no UTM)
+    expect(msgs[0].html).toMatch(/>my portfolio<\/a>/);
+    expect(msgs[0].html).toMatch(/>Portfolio<\/a> · <a [^>]+>Résumé<\/a> · <a [^>]+>LinkedIn<\/a>/);
+    expect(msgs[0].html).not.toContain(">sumandebnath.houseofnamus.com<");
+    expect(msgs[0].text).toContain("Marketer who builds AI · 9+ yrs brand & growth · 21+ AI products shipped solo");
+    expect(msgs[0].text).toMatch(/Résumé \(https:\/\/sumandebnath\.houseofnamus\.com\/resume\?ref=[^)]+utm_content=outreach_active-t1\)/);
+    const hrefs = [...msgs[0].html.matchAll(/href="([^"]+)"/g)].map((m) => decodeURIComponent(m[1].replace(/&amp;/g, "&")));
+    expect(hrefs).toHaveLength(4);
+    expect(hrefs.every((h) => h.startsWith("https://outreachos.houseofnamus.com/api/track/click?"))).toBe(true);
+    const linkedin = hrefs.find((h) => h.includes("linkedin.com"))!;
+    expect(linkedin).toContain("u=https://www.linkedin.com/in/suman-debnath-a528653a1&");
+    expect(linkedin).not.toContain("utm_");
+    for (const m of msgs.slice(1)) expect(m.html).toMatch(/>LinkedIn<\/a>/); // same signature on every follow-up
+    mkdirSync("test-results", { recursive: true });
+    writeFileSync(
+      "test-results/t1-preview.html",
+      `<!doctype html><meta charset="utf-8"><title>T1 preview</title><body style="margin:0;background:#fff"><div style="max-width:680px;margin:24px auto;padding:0 20px;font-family:Arial"><p style="color:#5f6368;font-size:13px;border-bottom:1px solid #e0e0e0;padding-bottom:10px"><b style="color:#202124;font-size:20px;font-weight:400">${h(0, "Subject")}</b><br>${h(0, "From").replace(/</g, "&lt;")} → ${h(0, "To").replace(/</g, "&lt;")}</p>${msgs[0].html.replace(/<img[^>]*>/g, "")}</div></body>`,
+    );
     expect(msgs[0].text).not.toMatch(/\+91|7980/);
     expect(msgs[0].text).toContain("utm_source=outreachos&utm_medium=email&utm_campaign=acme-ai&utm_term=suman-test&utm_content=outreach_active-t1");
     expect(msgs[3].text).toContain("utm_content=outreach_active-t4");
@@ -142,6 +161,8 @@ describe("end-to-end pipeline simulation", () => {
       "Waits of 3 / 5 / 6 business days; archived as GHOSTED exactly 18 business days after T1",
       "All follow-ups in the same Gmail thread: In-Reply-To + References chain, “Re: <original subject>”",
       "Links carry ?ref=<lead> and UTMs (acme-ai / suman-test / outreach_active-t1…t4); no phone number in the copy",
+      "Links show as words (“my portfolio”, signature “Portfolio · Résumé · LinkedIn”), never bare URLs; all 4 go through the click tracker",
+      "Same 4-line signature on every touch; body of T1 stays under 125 words",
     ]);
   });
 

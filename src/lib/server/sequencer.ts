@@ -70,6 +70,7 @@ export async function composeNextTouch(
   lead: Lead,
   templates: SequenceTemplate[],
   draftLog?: EmailLog | null,
+  signature?: string | null,
 ): Promise<Draft> {
   const touch = lead.current_touch + 1;
   const draft = draftLog === undefined ? await getDraftLog(lead.id, touch) : draftLog;
@@ -88,7 +89,7 @@ export async function composeNextTouch(
     touch,
     variant,
     subject: mergeVars(template.subject_template, lead, { originalSubject }),
-    body: mergeVars(template.body_template, lead, { originalSubject }),
+    body: mergeVars(template.body_template, lead, { originalSubject, signature }),
     draftId: null,
     template,
   };
@@ -340,7 +341,7 @@ export async function dispatchTouch(
   templates: SequenceTemplate[],
   gmail: gmail_v1.Gmail | null,
 ): Promise<EmailLog> {
-  const draft = await composeNextTouch(lead, templates);
+  const draft = await composeNextTouch(lead, templates, undefined, settings.email_signature);
   const { touch, variant, template } = draft;
 
   const unresolved = findUnresolved(`${draft.subject}\n${draft.body}`);

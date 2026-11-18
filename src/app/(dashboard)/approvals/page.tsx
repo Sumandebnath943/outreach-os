@@ -44,7 +44,7 @@ function ApprovalCard({
 
   const html = useMemo(() => {
     if (!preview || !settings) return "";
-    return stripImages(toHtml(body, previewLinks(lead.id, settings.portfolio_base_url, settings.resume_url)));
+    return stripImages(toHtml(body, previewLinks(lead.id, settings.portfolio_base_url, settings.resume_url, settings.linkedin_url)));
   }, [preview, settings, body, lead.id]);
 
   async function run(label: string, fn: () => Promise<unknown>) {

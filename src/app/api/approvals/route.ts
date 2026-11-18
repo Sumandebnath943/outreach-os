@@ -40,7 +40,7 @@ export const GET = route(async () => {
     const touch = lead.current_touch + 1;
     const draft = drafts.find((d) => d.lead_id === lead.id && d.touch_number === touch) ?? null;
     try {
-      const c = await composeNextTouch(lead, templates, draft);
+      const c = await composeNextTouch(lead, templates, draft, settings.email_signature);
       items.push({
         lead,
         touchNumber: touch,

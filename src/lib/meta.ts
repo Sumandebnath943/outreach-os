@@ -46,7 +46,9 @@ export const TEMPLATE_VARIABLES = [
   "{{company_name}}",
   "{{target_role_opening}}",
   "{{custom_icebreaker}}",
-  "{{tracked_portfolio_url}}",
-  "{{tracked_resume_url}}",
+  "{{tracked_portfolio_url|my portfolio}}",
+  "{{tracked_resume_url|Résumé}}",
+  "{{tracked_linkedin_url|LinkedIn}}",
+  "{{signature}}",
   "{{original_subject}}",
 ];

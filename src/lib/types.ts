@@ -61,6 +61,10 @@ export interface SystemSettings {
   warmup_started_on: string | null;
   /** Out-of-office replies resume the sequence automatically after the person is back. */
   auto_resume_ooo: boolean;
+  /** Public LinkedIn profile, used by {{tracked_linkedin_url}}. */
+  linkedin_url: string | null;
+  /** Shared email signature inserted by {{signature}} (may contain labelled link tokens). */
+  email_signature: string | null;
   updated_at: string;
 }
 

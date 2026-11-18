@@ -109,6 +109,23 @@ export const PUT = route(async (req: Request) => {
     if (bad.length) return fail(`No-send dates must be YYYY-MM-DD (check: ${bad.slice(0, 3).join(", ")})`);
     patch.extra_blackout_dates = parseBlackoutDates(raw).join(", ") || null;
   }
+  if (body.linkedin_url !== undefined) {
+    const v = String(body.linkedin_url ?? "").trim();
+    if (v) {
+      let u: URL | null = null;
+      try {
+        u = new URL(v);
+      } catch {}
+      if (!u || u.protocol !== "https:") return fail("linkedin_url must be an https:// URL");
+    }
+    patch.linkedin_url = v || null;
+  }
+  if (body.email_signature !== undefined) {
+    const v = String(body.email_signature ?? "").replace(/\r\n/g, "\n").trim();
+    if (v.length > 1000) return fail("The signature is too long (max 1,000 characters)");
+    if (v.split("\n").length > 6) return fail("Keep the signature to 6 lines or fewer");
+    patch.email_signature = v || null;
+  }
   if (body.warmup_started_on !== undefined) {
     const v = String(body.warmup_started_on ?? "");
     if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return fail("warmup_started_on must be YYYY-MM-DD");

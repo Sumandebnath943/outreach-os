@@ -72,6 +72,32 @@ describe("toHtml / toPlainText", () => {
   });
 });
 
+describe("labelled links and the shared signature", () => {
+  const sig = "Suman Debnath\n{{tracked_portfolio_url|Portfolio}} · {{tracked_linkedin_url|LinkedIn}}";
+
+  it("expands {{signature}} and keeps the link labels", () => {
+    const merged = mergeVars("Best,\n{{signature}}", L(), { signature: sig });
+    expect(merged).toBe("Best,\nSuman Debnath\n{{tracked_portfolio_url|Portfolio}} · {{tracked_linkedin_url|LinkedIn}}");
+    expect(findUnresolved(merged)).toEqual([]);
+  });
+
+  it("renders labels as clickable words in HTML and 'Label (url)' in text", () => {
+    const withLi = previewLinks(ID, "https://x.com", "https://x.com/resume", "https://www.linkedin.com/in/me");
+    const merged = mergeVars("See {{tracked_portfolio_url|my portfolio}}.\n\n{{signature}}", L(), { signature: sig });
+    const html = toHtml(merged, withLi);
+    expect(html).toContain(`<a href="https://x.com/?ref=${ID}" style="color:#1a73e8" target="_blank">my portfolio</a>`);
+    expect(html).toContain('target="_blank">LinkedIn</a>');
+    expect(toPlainText(merged, withLi)).toContain(`See my portfolio (https://x.com/?ref=${ID}).`);
+  });
+
+  it("degrades to plain words when a link isn't configured, and escapes labels once", () => {
+    const merged = mergeVars("{{tracked_linkedin_url|LinkedIn}} · {{tracked_portfolio_url|Work & play}}", L());
+    expect(toHtml(merged, links)).toContain("LinkedIn · <a ");
+    expect(toHtml(merged, links)).toContain(">Work &amp; play</a>");
+    expect(toPlainText(merged, links)).toMatch(/^LinkedIn · Work & play \(https/);
+  });
+});
+
 describe("UTM tagging", () => {
   it("tags links with company, person and stage-touch", () => {
     const utm = buildUtm({ company_name: "Acme AI, Inc.", first_name: "Zoë", last_name: "O'Neil" }, "OUTREACH_ACTIVE", "T2A");

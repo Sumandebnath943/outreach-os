@@ -34,12 +34,16 @@ export function pixelUrl(leadId: string, logId: string): string {
 export function trackedLinks(
   leadId: string,
   logId: string,
-  settings: Pick<SystemSettings, "portfolio_base_url" | "resume_url">,
+  settings: Pick<SystemSettings, "portfolio_base_url" | "resume_url"> & Partial<Pick<SystemSettings, "linkedin_url">>,
   utm?: Utm,
 ): RenderLinks {
   const portfolio = withRef(settings.portfolio_base_url, leadId, utm);
   const resume = withRef(settings.resume_url, leadId, utm);
+  const linkedin = settings.linkedin_url?.trim();
   return {
+    // LinkedIn goes through the click tracker (a click is an engagement signal) but carries no
+    // ref/UTM parameters — those are only meaningful on your own site.
+    ...(linkedin ? { tracked_linkedin_url: { href: clickUrl(leadId, logId, linkedin), direct: linkedin, label: "LinkedIn" } } : {}),
     tracked_portfolio_url: {
       href: clickUrl(leadId, logId, portfolio),
       direct: portfolio,

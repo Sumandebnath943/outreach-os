@@ -6,7 +6,7 @@ import { api, broadcastRefresh, usePoll } from "@/lib/client";
 import { portfolioSnippet } from "@/lib/snippet";
 import type { SystemSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Badge, Button, Card, Input, Label, Select, toast } from "@/components/ui";
+import { Badge, Button, Card, Input, Label, Select, Textarea, toast } from "@/components/ui";
 
 interface SettingsResponse {
   settings: Omit<SystemSettings, "gmail_refresh_token">;
@@ -297,6 +297,23 @@ export default function SettingsPage() {
             <div>
               <Label>Résumé URL</Label>
               <Input value={form.resume_url} onChange={str("resume_url")} />
+            </div>
+            <div>
+              <Label>LinkedIn URL</Label>
+              <Input value={form.linkedin_url ?? ""} onChange={str("linkedin_url")} placeholder="https://www.linkedin.com/in/…" />
+            </div>
+            <div>
+              <Label hint="inserted by {{signature}} · max 6 lines, no images">Email signature</Label>
+              <Textarea
+                rows={5}
+                value={form.email_signature ?? ""}
+                onChange={(e) => setForm({ ...form, email_signature: e.target.value })}
+                className="font-mono text-[12px]"
+              />
+              <p className="mt-1 text-[11px] text-dim">
+                Clickable words: <code>{"{{tracked_portfolio_url|Portfolio}}"}</code> · <code>{"{{tracked_resume_url|Résumé}}"}</code> ·{" "}
+                <code>{"{{tracked_linkedin_url|LinkedIn}}"}</code>. Portfolio and résumé links carry ref + UTM tags automatically.
+              </p>
             </div>
           </div>
         </Section>

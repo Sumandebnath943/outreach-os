@@ -82,6 +82,16 @@ function defaultSettings(): Omit<SystemSettings, "updated_at"> {
     warmup_enabled: false,
     warmup_started_on: null,
     auto_resume_ooo: true,
+    ...signatureDefaults(),
+  };
+}
+
+/** linkedin_url + email_signature exactly as migration 011 seeds them. */
+function signatureDefaults(): Pick<SystemSettings, "linkedin_url" | "email_signature"> {
+  const sql = readFileSync("supabase/migrations/011_signature_and_link_labels.sql", "utf8").replace(/\r\n/g, "\n");
+  return {
+    linkedin_url: sql.match(/linkedin_url text default '([^']+)'/)![1],
+    email_signature: sql.match(/email_signature text default \$sig\$([\s\S]*?)\$sig\$/)![1],
   };
 }
 

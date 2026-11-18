@@ -6,31 +6,42 @@
  *   template ──mergeVars──▶ merged text (link tokens still present)
  *            ──toPlainText──▶ text/plain part   (direct ?ref= URLs)
  *            ──toHtml───────▶ text/html part    (click-tracked anchors + pixel)
+ *
+ * Link tokens can carry their own anchor text: {{tracked_portfolio_url|Portfolio}} renders as a
+ * clickable "Portfolio" in HTML and "Portfolio (https://…)" in the text part.
  */
 import type { Lead } from "./types";
 
-export const LINK_TOKENS = ["tracked_portfolio_url", "tracked_resume_url"] as const;
+export const LINK_TOKENS = ["tracked_portfolio_url", "tracked_resume_url", "tracked_linkedin_url"] as const;
 export type LinkToken = (typeof LINK_TOKENS)[number];
 
 export interface RenderLink {
   /** href used in the HTML part (click tracker in production, direct URL in previews) */
   href: string;
-  /** visible anchor text */
+  /** default anchor text when the token has no |label */
   label: string;
   /** direct destination with ?ref= — used in the text/plain part */
   direct: string;
 }
-export type RenderLinks = Record<LinkToken, RenderLink>;
+/** A link may be missing (e.g. no LinkedIn URL configured): its label then renders as plain text. */
+export type RenderLinks = Partial<Record<LinkToken, RenderLink>>;
 
 type MergeLead = Pick<
   Lead,
   "first_name" | "last_name" | "company_name" | "job_title" | "target_role_opening" | "custom_icebreaker"
 >;
 
-const TOKEN_RE = /\{\{\s*([a-z_]+)\s*\}\}/gi;
+/** {{name}} or {{link_token|Anchor text}} */
+const TOKEN_RE = /\{\{\s*([a-z_]+)\s*(?:\|([^{}|]*))?\}\}/gi;
+const SIGNATURE_RE = /\{\{\s*signature\s*\}\}/gi;
 const DEFAULT_ROLE = "Senior Brand Marketing / AI Product Marketing";
+const isLinkToken = (k: string): k is LinkToken => (LINK_TOKENS as readonly string[]).includes(k);
 
-export function mergeVars(text: string, lead: MergeLead, opts: { originalSubject?: string | null } = {}): string {
+export function mergeVars(
+  text: string,
+  lead: MergeLead,
+  opts: { originalSubject?: string | null; signature?: string | null } = {},
+): string {
   const ice = lead.custom_icebreaker?.trim();
   const values: Record<string, string> = {
     first_name: lead.first_name?.trim() || "Team",
@@ -42,9 +53,11 @@ export function mergeVars(text: string, lead: MergeLead, opts: { originalSubject
     custom_icebreaker: ice ? `${ice}\n\n` : "",
     original_subject: opts.originalSubject?.trim() || "",
   };
-  return text.replace(TOKEN_RE, (m, key: string) => {
+  // The shared signature (Settings) is expanded first, so its own link tokens are kept below.
+  const withSignature = text.replace(SIGNATURE_RE, (opts.signature ?? "").replace(/\r\n/g, "\n").trim());
+  return withSignature.replace(TOKEN_RE, (m, key: string, label?: string) => {
     const k = key.toLowerCase();
-    if ((LINK_TOKENS as readonly string[]).includes(k)) return `{{${k}}}`;
+    if (isLinkToken(k)) return label?.trim() ? `{{${k}|${label.trim()}}}` : `{{${k}}}`;
     return k in values ? values[k] : m;
   });
 }
@@ -137,20 +150,25 @@ export function displayUrl(base: string): string {
 }
 
 /** Links for previews (no click tracking, direct ?ref= destinations). */
-export function previewLinks(leadId: string, portfolioBase: string, resumeBase: string): RenderLinks {
+export function previewLinks(leadId: string, portfolioBase: string, resumeBase: string, linkedinUrl?: string | null): RenderLinks {
   const p = withRef(portfolioBase, leadId);
   const r = withRef(resumeBase, leadId);
   return {
     tracked_portfolio_url: { href: p, direct: p, label: displayUrl(portfolioBase) },
     tracked_resume_url: { href: r, direct: r, label: displayUrl(resumeBase) },
+    ...(linkedinUrl ? { tracked_linkedin_url: { href: linkedinUrl, direct: linkedinUrl, label: "LinkedIn" } } : {}),
   };
 }
 
 export function toPlainText(merged: string, links: RenderLinks): string {
   return merged
-    .replace(TOKEN_RE, (m, key: string) => {
-      const k = key.toLowerCase() as LinkToken;
-      return links[k]?.direct ?? m;
+    .replace(TOKEN_RE, (m, key: string, label?: string) => {
+      const k = key.toLowerCase();
+      if (!isLinkToken(k)) return m;
+      const l = links[k];
+      const text = label?.trim();
+      if (!l) return text ?? ""; // link not configured: keep its words, drop the token
+      return text ? `${text} (${l.direct})` : l.direct;
     })
     .replace(/\r\n/g, "\n")
     .trim();
@@ -205,11 +223,15 @@ export function toHtml(merged: string, links: RenderLinks, pixelUrl?: string): s
   )}</div>${pixel}`;
 }
 
+/** `escaped` is already HTML-escaped, so a token's |label is too. */
 function linkify(escaped: string, links: RenderLinks): string {
-  return escaped.replace(TOKEN_RE, (m, key: string) => {
-    const l = links[key.toLowerCase() as LinkToken];
-    if (!l) return m;
-    return `<a href="${esc(l.href)}" style="color:#1a73e8" target="_blank">${esc(l.label)}</a>`;
+  return escaped.replace(TOKEN_RE, (m, key: string, label?: string) => {
+    const k = key.toLowerCase();
+    if (!isLinkToken(k)) return m;
+    const l = links[k];
+    const text = label?.trim() || (l ? esc(l.label) : "");
+    if (!l) return text;
+    return `<a href="${esc(l.href)}" style="color:#1a73e8" target="_blank">${text}</a>`;
   });
 }
 

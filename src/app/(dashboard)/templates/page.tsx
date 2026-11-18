@@ -93,8 +93,13 @@ export default function TemplatesPage() {
     const t1 = templates.find((x) => x.role_track === track && x.touch_number === 1) ?? templates.find((x) => x.role_track === "HYBRID_DEFAULT" && x.touch_number === 1);
     const originalSubject = t1 ? mergeVars(t1.subject_template, lead) : "Original subject";
     const subject = mergeVars(form.subject_template, lead, { originalSubject });
-    const merged = mergeVars(form.body_template, lead, { originalSubject });
-    const links = previewLinks(SAMPLE_ID, s?.settings.portfolio_base_url ?? "https://sumandebnath.houseofnamus.com", s?.settings.resume_url ?? "https://sumandebnath.houseofnamus.com/resume");
+    const merged = mergeVars(form.body_template, lead, { originalSubject, signature: s?.settings.email_signature });
+    const links = previewLinks(
+      SAMPLE_ID,
+      s?.settings.portfolio_base_url ?? "https://sumandebnath.houseofnamus.com",
+      s?.settings.resume_url ?? "https://sumandebnath.houseofnamus.com/resume",
+      s?.settings.linkedin_url,
+    );
     return { subject, html: toHtml(merged, links), unresolved: findUnresolved(`${subject}\n${merged}`) };
   }, [form, sample, s, templates, track]);
 
