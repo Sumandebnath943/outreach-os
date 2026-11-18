@@ -47,6 +47,8 @@ export const env = {
   trackingSecret: () =>
     process.env.TRACKING_SECRET || process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "outreach-os",
   ownerTimezone: () => process.env.OWNER_TIMEZONE || "Asia/Kolkata",
+  groqApiKey: () => (process.env.GROQ_API_KEY || "").trim(),
+  groqModel: () => (process.env.GROQ_MODEL || "openai/gpt-oss-20b").trim(),
   telegramBotToken: () => (process.env.TELEGRAM_BOT_TOKEN || "").trim(),
   telegramChatId: () => (process.env.TELEGRAM_CHAT_ID || "").trim(),
   /** Local time (owner timezone, HH:MM) after which the daily digest goes out. */

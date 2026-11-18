@@ -62,10 +62,19 @@ beforeAll(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   // Telegram is the only outbound HTTP the app makes here — capture it instead of sending.
   vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
-    if (!String(url).startsWith("https://api.telegram.org/")) throw new Error(`unexpected fetch ${url}`);
     const { state } = await import("./sim/state");
-    state.telegram.push(JSON.parse(String(init?.body)).text);
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    if (String(url).startsWith("https://api.telegram.org/")) {
+      state.telegram.push(JSON.parse(String(init?.body)).text);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (String(url) === "https://api.groq.com/openai/v1/chat/completions") {
+      state.groqCalls++;
+      const user = JSON.parse(String(init?.body)).messages[1].content as string;
+      const content = state.groq?.(user) ?? null;
+      if (content === null) return new Response("upstream error", { status: 503 });
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
   });
 });
 
@@ -241,7 +250,7 @@ describe("end-to-end pipeline simulation", () => {
   });
 
   it("S5 · out-of-office: resume keeps the original schedule; a later 'not interested' closes the lead", async () => {
-    const sim = new Sim("S5 · Out-of-office reply, resume, then a negative reply", MON_0830_IST);
+    const sim = new Sim("S5 · Out-of-office reply, manual resume, then a negative reply", MON_0830_IST, { auto_resume_ooo: false });
     await sim.importLead();
     await sim.runUntil(() => sim.touches().length === 1);
 
@@ -476,7 +485,7 @@ describe("end-to-end pipeline simulation", () => {
   });
 
   it("S17 · analytics: a mixed 5-lead campaign produces the expected rates, funnel and touch breakdown", async () => {
-    const sim = new Sim("S17 · Mixed campaign → Analytics page numbers", MON_0830_IST);
+    const sim = new Sim("S17 · Mixed campaign → Analytics page numbers", MON_0830_IST, { auto_resume_ooo: false });
     const [a1, a2, a3, a4, a5] = ["reply", "bounce", "engaged", "silent", "ooo"].map(alias);
     for (const [i, email] of [a1, a2, a3, a4, a5].entries())
       await sim.importLead(defaultLead({ email, first_name: `Lead${i + 1}`, company_name: `Company ${i + 1}`, geo_region: i === 3 ? "US" : "INDIA" }));
@@ -580,6 +589,10 @@ describe("end-to-end pipeline simulation", () => {
     expect(alerts.find((m) => m.includes("Nimbus"))!.startsWith("🌴")).toBe(true);
     expect(alerts.find((m) => m.includes("Orbit"))!.startsWith("✋")).toBe(true);
 
+    // the out-of-office lead (no return date stated, keyword triage) auto-resumes after 5 business days
+    expect(sim.lead(ooo)).toMatchObject({ funnel_stage: "OUTREACH_ACTIVE", sequence_active: true, reply_sentiment: "OUT_OF_OFFICE" });
+    expect(sim.lead(ooo).next_touch_due_at).toBe("2026-12-01T04:30:00.000Z");
+
     // exactly one alert per reply — later runs don't repeat them
     await sim.runFor(1);
     expect(sim.telegram.filter((m) => !m.startsWith("📋"))).toHaveLength(3);
@@ -590,6 +603,7 @@ describe("end-to-end pipeline simulation", () => {
       "Positive reply flagged 🔥 HOT with the person, company, snippet and “reply from Gmail soon”",
       "Gmail link opens the reply's own thread (it arrived as a new email); dossier link opens the lead",
       "Out-of-office 🌴 and not-interested ✋ alerts say what to do next",
+      "The out-of-office lead (no return date given) auto-resumed: next touch Tue 1 Dec 10:00 IST, 5 business days later",
     ]);
   });
 
@@ -623,5 +637,127 @@ describe("end-to-end pipeline simulation", () => {
       "Monday: 2 touches waiting for approval, no replies",
       "Tuesday: 1 reply waiting (🔥 positive, linked to its dossier), 1 email sent yesterday",
     ]);
+  });
+
+  it("S20 · holiday calendar: no sends on Thanksgiving week or Republic Day; holidays don't count as business days", async () => {
+    // US: imported Wed 25 Nov after hours → Thu (Thanksgiving) and Fri (day after) skipped → Mon 30 Nov 09:00 ET
+    const us = new Sim("S20a · US Thanksgiving week", "2026-11-25T22:30:00.000Z", {}, { zone: "America/New_York", label: "ET" });
+    await us.importLead(defaultLead({ geo_region: "US", company_name: "Nimbus Labs" }));
+    await us.runUntil(() => us.touches().length === 1);
+    expect(us.sentLogs()[0].sent_at).toBe("2026-11-30T14:00:00.000Z");
+    record(us, ["Imported Wed evening; Thanksgiving (Thu) and the day after (Fri) skipped → T1 Mon 30 Nov 09:00 ET"]);
+
+    // India: T1 Fri 22 Jan 2027; +3 business days skips Republic Day (Tue 26 Jan) → T2 Thu 28 Jan
+    const india = new Sim("S20b · India Republic Day inside a follow-up wait", "2027-01-22T03:00:00.000Z");
+    await india.importLead();
+    await india.runUntil(() => india.touches().length === 2, 10);
+    expect(india.sentLogs().map((l) => l.sent_at)).toEqual(["2027-01-22T04:30:00.000Z", "2027-01-28T04:30:00.000Z"]);
+    record(india, ["T1 Fri 22 Jan 2027; the 3-business-day wait skipped Republic Day (Tue 26 Jan) → T2 Thu 28 Jan, not Wed 27"]);
+
+    // Extra no-send date from Settings applies to every region
+    const extra = new Sim("S20c · Extra no-send date from Settings", MON_0830_IST, { extra_blackout_dates: "2026-11-23" });
+    await extra.importLead();
+    await extra.runUntil(() => extra.touches().length === 1);
+    expect(extra.sentLogs()[0].sent_at).toBe("2026-11-24T04:30:00.000Z");
+    record(extra, ["Mon 23 Nov set as a no-send date in Settings → T1 waited until Tue 24 Nov 10:00 IST"]);
+  });
+
+  it("S21 · new-sender warm-up caps week 1 at 10 emails a day", async () => {
+    const sim = new Sim("S21 · Sender warm-up (week 1 = 10/day)", MON_0830_IST, { warmup_enabled: true, warmup_started_on: "2026-11-23", daily_send_limit: 45 });
+    const leads = Array.from({ length: 14 }, (_, i) => alias(`w${i + 1}`));
+    for (const [i, email] of leads.entries()) await sim.importLead(defaultLead({ email, first_name: `W${i + 1}`, company_name: `Warm Co ${i + 1}` }));
+    const total = () => leads.reduce((n, e) => n + sim.touches(e).length, 0);
+
+    await sim.runFor(0.4); // the whole Indian business day
+    expect(total()).toBe(10);
+    const capped = await sim.cron();
+    expect(capped.notes.join(" ")).toMatch(/Warm-up week 1 cap \(10\/day\) reached/);
+    await sim.runUntil(() => total() === 14);
+    const days = leads.flatMap((e) => sim.sentLogs(e).map((l) => l.sent_at.slice(0, 10)));
+    expect(days.filter((d) => d === "2026-11-23")).toHaveLength(10);
+    sim.note("Worker note: Warm-up week 1 cap (10/day) reached — remaining 4 leads go out the next morning");
+    record(sim, ["Week 1 of warm-up: exactly 10 sends on day 1 despite a 45/day cap; the other 4 went out on day 2"]);
+  });
+
+  it("S22 · AI triage (Groq): interview request, out-of-office with a date, a reply keywords misread, and an API outage", async () => {
+    process.env.GROQ_API_KEY = "sim-groq-key";
+    const { state } = await import("./sim/state");
+    const { classifyReply } = await import("@/lib/signals");
+    try {
+      const sim = new Sim("S22 · AI reply triage via Groq", MON_0830_IST);
+      const [hot, ooo, filled, down] = ["hot", "ooo", "filled", "down"].map(alias);
+      for (const [i, email] of [hot, ooo, filled, down].entries())
+        await sim.importLead(defaultLead({ email, first_name: ["Priya", "Jordan", "Alex", "Sam"][i], last_name: "Rao", company_name: ["Acme AI", "Nimbus", "Orbit", "Globex"][i] }));
+      await sim.runUntil(() => [hot, ooo, filled, down].every((e) => sim.touches(e).length === 1));
+
+      const seen: string[] = [];
+      state.groq = (user) => {
+        seen.push(user);
+        if (user.includes("schedule an interview"))
+          return JSON.stringify({
+            sentiment: "POSITIVE",
+            intent: "INTERVIEW_REQUEST",
+            summary: "Wants to schedule an interview this Thursday for the AI PMM role.",
+            urgency: "HIGH",
+            return_date: null,
+            suggested_reply: "Hi Priya, thank you — I'd be glad to interview. I'm available [your available slots] on Thursday. Best, Suman",
+          });
+        if (user.includes("out of the office"))
+          return JSON.stringify({ sentiment: "OUT_OF_OFFICE", intent: "AUTO_REPLY", summary: "Away until 1 December.", urgency: "LOW", return_date: "2026-12-01", suggested_reply: null });
+        if (user.includes("already been filled"))
+          return JSON.stringify({ sentiment: "NEGATIVE", intent: "NOT_INTERESTED", summary: "The role is filled; not taking this further.", urgency: "LOW", return_date: null, suggested_reply: "should be dropped" });
+        return null; // simulated Groq outage
+      };
+
+      sim.advance(2 * 60 * 60 * 1000);
+      sim.reply("Hi Suman, thanks for reaching out — could we schedule an interview…", {
+        email: hot,
+        body: "Hi Suman,\n\nThanks for reaching out — your profile is a great fit. Could we schedule an interview this Thursday?\n\nPriya\n\nOn Mon, 23 Nov 2026 at 10:00, Suman wrote:\n> Hi Priya, Most teams hiring for…",
+      });
+      sim.reply("Automatic reply: I'm out of the office", { email: ooo, body: "I'm out of the office with limited access to email and will be back on Tuesday 1 December." });
+      const filledText = "Thanks, but the role has already been filled and we aren't available to take this further.";
+      sim.reply(filledText, { email: filled });
+      sim.reply("Hi, can you share more about your AI PM work?", { email: down });
+      await sim.cron();
+
+      const event = (email: string) => sim.events(email).find((e) => e.event_type === "REPLY_RECEIVED")!.metadata;
+      // 1. interview request → hot, with intent, summary and a draft (quoted history stripped before sending to Groq)
+      expect(sim.lead(hot)).toMatchObject({ funnel_stage: "REPLIED_TRIAGE", reply_sentiment: "POSITIVE" });
+      expect(event(hot)).toMatchObject({ intent: "INTERVIEW_REQUEST", urgency: "HIGH", analysedBy: "ai" });
+      expect(seen.find((u) => u.includes("schedule an interview"))).not.toContain("Most teams hiring for");
+      const hotAlert = sim.telegram.find((m) => m.includes("Acme AI"))!;
+      expect(hotAlert).toContain("🧠 <b>Interview request</b>");
+      expect(hotAlert).toContain("✍️ <b>Draft reply</b>");
+
+      // 2. out-of-office with a return date → resumes the business morning after they're back
+      expect(sim.lead(ooo)).toMatchObject({ funnel_stage: "OUTREACH_ACTIVE", sequence_active: true });
+      expect(sim.lead(ooo).next_touch_due_at).toBe("2026-12-02T04:30:00.000Z");
+      expect(sim.telegram.find((m) => m.includes("Nimbus"))).toContain("Resumes automatically: T2 on Wed 2 Dec, 10:00 (IST)");
+
+      // 3. keywords misread "available" as positive; the AI gets it right (and its draft is dropped for a negative)
+      expect(classifyReply(filledText)).toBe("POSITIVE");
+      expect(sim.lead(filled).reply_sentiment).toBe("NEGATIVE");
+      expect(event(filled).suggestedReply).toBeNull();
+
+      // 4. Groq down → keyword fallback; the reply is still caught and alerted
+      expect(sim.lead(down)).toMatchObject({ funnel_stage: "REPLIED_TRIAGE" });
+      expect(event(down).analysedBy).toBe("keywords");
+      expect(sim.telegram.filter((m) => !m.startsWith("📋"))).toHaveLength(4);
+      expect(state.groqCalls).toBe(4); // one call per reply — nothing else uses the AI
+
+      await sim.runUntil(() => sim.touches(ooo).length === 2);
+      expect(sim.sentLogs(ooo)[1].sent_at).toBe("2026-12-02T04:30:00.000Z");
+
+      sim.note(`Hot alert text:<br>${hotAlert.replace(/<[^>]+>/g, "").replace(/\n+/g, "<br>").replace(/\|/g, "/")}`);
+      record(sim, [
+        "Interview request → 🔥 with “Interview request — …” summary and a draft reply (quoted history stripped before calling Groq)",
+        "Out-of-office “back on Tuesday 1 December” → paused, then T2 sent automatically Wed 2 Dec 10:00 IST",
+        "“…aren't available to take this further” — keywords said POSITIVE, the AI correctly said NEGATIVE (no draft)",
+        "Groq outage → keyword fallback; the reply was still detected and alerted",
+        "Exactly 4 Groq calls for 4 replies — the AI runs only when a reply arrives",
+      ]);
+    } finally {
+      delete process.env.GROQ_API_KEY;
+    }
   });
 });

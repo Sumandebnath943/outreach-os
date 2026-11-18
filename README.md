@@ -120,12 +120,13 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001` through `009`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `010`.
    A database set up earlier only needs the ones it hasn't run yet. They are all safe to re-run.
    - `006` installs the best-practice master sequence (see `docs/TEMPLATE_PROPOSAL.md`).
    - `007` adds the Telegram digest bookkeeping.
    - `008` makes Auto-Pilot the default.
    - `009` schedules the worker with Supabase Cron (see step 6). Fill in its two placeholders in the SQL Editor first.
+   - `010` adds the holiday calendar, sender warm-up and out-of-office auto-resume settings, plus a daily cleanup of cron logs (keeps 7 days) for the free tier.
    - `005` grants table access to the server role. Supabase projects created since mid-2026 no longer do this automatically. Without it, the app fails with *"permission denied for table system_settings"*.
 2. Copy two values into your environment:
    - The **Project URL**, from *Project Settings → Data API* or the **Connect** button.
@@ -215,7 +216,31 @@ To set it up:
 4. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Vercel (and `.env`), then redeploy.
 5. In **Settings**, click **Send test alert**.
 
-### 9. Live test rounds (optional)
+### 9. AI reply triage with Groq (optional, recommended)
+When a reply arrives, its text goes to Groq, with quoted history removed. Groq returns:
+- **Sentiment and intent**, such as interview request, wants a call, asks for your CV, referral, not hiring now, not interested, unsubscribe or auto-reply.
+- **A one-line summary.**
+- **The return date**, for out-of-office replies.
+- **A draft answer**, for positive or neutral replies. It's shown in Telegram and the dossier and is **never sent automatically**.
+
+Groq is only called when a reply arrives, typically a few times a day, at a fraction of a cent each. If the key is missing or Groq fails, the keyword rules take over, so reply detection never depends on it.
+
+To set it up:
+1. Create an API key at console.groq.com.
+2. Set `GROQ_API_KEY` in Vercel (and `.env`). `GROQ_MODEL` is optional and defaults to `openai/gpt-oss-20b`.
+3. Redeploy.
+4. Recommended: in the Groq console, turn on **Zero Data Retention** (Data Controls).
+
+### 10. Holidays, warm-up and out-of-office (Settings)
+- **Holiday calendar:**
+  - **US:** federal holidays (with the weekend observed-day rules) plus the day after Thanksgiving.
+  - **India:** New Year's Day, Republic Day, Holi, Eid ul-Fitr, Independence Day, Gandhi Jayanti, Dussehra, Diwali and Christmas. Festival dates are loaded through 2027; add later years to `src/lib/holidays.ts`.
+  - **Effect:** nothing is sent on a holiday, and holidays don't count toward follow-up waits.
+  - **Extra no-send dates:** add regional holidays in Settings; they apply to every region.
+- **Sender warm-up:** the daily cap ramps 10 → 20 → 30 → your cap over the first three weeks, from the start date in Settings. The top bar shows the current warm-up week.
+- **Out-of-office auto-resume:** an auto-reply pauses the sequence. It resumes on the first business morning after the person is back: the AI reads the return date, otherwise it assumes 5 business days. It's never earlier than the original schedule, and happens at most twice per lead.
+
+### 11. Live test rounds (optional)
 `npm run live -- <command>` runs the real worker against your database and Gmail, fast-forwarding time by moving due dates.
 - It only sends to plus-addresses of `LIVE_LEAD_EMAIL` (e.g. `you+nr@gmail.com`), which arrive in your own inbox.
 - It refuses to run while a real lead could be sent, and never changes settings.

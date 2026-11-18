@@ -3,7 +3,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { countSentSince, db, must } from "./db";
 import { env } from "./env";
 import { isTelegramConfigured, sendTelegram } from "./telegram";
-import { SENDABLE_STAGES } from "../funnel";
+import { effectiveDailyLimit, SENDABLE_STAGES } from "../funnel";
 import { dossierUrl, formatDigest, type DigestLead } from "../notify";
 import { startOfTodayIn } from "../schedule";
 import type { Lead, SystemSettings } from "../types";
@@ -72,7 +72,7 @@ export async function maybeSendDigest(settings: SystemSettings, now = new Date()
       warmTotal: warm.count ?? 0,
       interviewing: interviewing.count ?? 0,
       sentYesterday: sinceYesterday - sinceToday,
-      dailyLimit: settings.daily_send_limit,
+      dailyLimit: effectiveDailyLimit(settings, now, tz).cap,
       approvalsLink: `${app}/approvals`,
       analyticsLink: `${app}/analytics`,
     }),

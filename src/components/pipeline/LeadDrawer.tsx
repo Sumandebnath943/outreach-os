@@ -360,7 +360,29 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                         {lead.reply_sentiment && <Badge tone="emerald">{lead.reply_sentiment}</Badge>}
                       </div>
                     </div>
+                    {typeof lastReply?.metadata.summary === "string" && lastReply.metadata.analysedBy === "ai" && (
+                      <p className="mt-2 text-xs text-emerald-200">
+                        🧠 {String(lastReply.metadata.intent ?? "").replace(/_/g, " ").toLowerCase()} — {lastReply.metadata.summary}
+                      </p>
+                    )}
                     <p className="mt-2 text-sm leading-relaxed text-fg/90">“{lead.reply_snippet}”</p>
+                    {typeof lastReply?.metadata.suggestedReply === "string" && (
+                      <details className="mt-2 text-xs text-muted">
+                        <summary className="cursor-pointer hover:text-fg">✍️ AI draft reply (not sent)</summary>
+                        <pre className="mt-1 rounded border border-line bg-bg p-2 font-sans text-[12px] leading-relaxed whitespace-pre-wrap">
+                          {lastReply.metadata.suggestedReply}
+                        </pre>
+                        <button
+                          className="mt-1 text-[11px] underline hover:text-fg"
+                          onClick={() => navigator.clipboard.writeText(String(lastReply.metadata.suggestedReply)).then(() => toast("Draft copied"))}
+                        >
+                          Copy draft
+                        </button>
+                      </details>
+                    )}
+                    {typeof lastReply?.metadata.autoResumeAt === "string" && lead.sequence_active && (
+                      <p className="mt-2 text-xs text-amber-200">🌴 Out of office — sequence resumes automatically {fmt(lastReply.metadata.autoResumeAt)}.</p>
+                    )}
                     {replyLinkId && (
                       <div className="mt-2">
                         <GmailLink mailbox={data?.mailbox ?? null} id={replyLinkId} label="Open reply in Gmail" />

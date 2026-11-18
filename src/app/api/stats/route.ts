@@ -2,7 +2,7 @@ import { countSentSince, db, getSettings } from "@/lib/server/db";
 import { env } from "@/lib/server/env";
 import { isGmailConfigured } from "@/lib/server/gmail";
 import { ok, route } from "@/lib/server/http";
-import { SENDABLE_STAGES } from "@/lib/funnel";
+import { effectiveDailyLimit, SENDABLE_STAGES } from "@/lib/funnel";
 import { startOfTodayIn } from "@/lib/schedule";
 import { FUNNEL_STAGES, type DashboardStats, type FunnelStage } from "@/lib/types";
 
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const GET = route(async () => {
   const settings = await getSettings();
+  const cap = effectiveDailyLimit(settings, new Date(), env.ownerTimezone());
   const horizon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   // Exact counts via head requests — unaffected by the PostgREST 1000-row response cap.
   const leads = () => db().from("leads").select("id", { count: "exact", head: true });
@@ -41,7 +42,8 @@ export const GET = route(async () => {
     triage: byStage.REPLIED_TRIAGE,
     interviewing: byStage.INTERVIEWING,
     sentToday,
-    dailyLimit: settings.daily_send_limit,
+    dailyLimit: cap.cap,
+    warmupWeek: cap.warmupWeek,
     executionMode: settings.execution_mode,
     sendProvider: settings.send_provider,
     pendingApprovals: pending,

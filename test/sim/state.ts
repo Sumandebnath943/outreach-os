@@ -9,4 +9,7 @@ export const state = {
   after: [] as (() => unknown)[],
   /** Telegram messages the app tried to send (captured, never sent). */
   telegram: [] as string[],
+  /** Fake Groq: returns the model's JSON text for a reply, or null to simulate an API error. */
+  groq: null as ((replyText: string) => string | null) | null,
+  groqCalls: 0,
 };

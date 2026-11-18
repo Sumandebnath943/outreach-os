@@ -112,7 +112,7 @@ export const PATCH = route(async (req: Request) => {
 
   if (body.action === "resume_sequence") {
     if (current.current_touch >= 4) return fail("All 4 touches already sent");
-    const [templates, lastSent] = await Promise.all([
+    const [templates, lastSent, settings] = await Promise.all([
       loadTemplates(),
       db()
         .from("email_logs")
@@ -121,12 +121,15 @@ export const PATCH = route(async (req: Request) => {
         .in("status", ["SENT", "BOUNCED"])
         .order("sent_at", { ascending: false })
         .limit(1),
+      getSettings(),
     ]);
     const lastAt = (lastSent.data as { sent_at: string }[] | null)?.[0]?.sent_at;
     const due = resumeDueAt(
       lastAt ? new Date(lastAt) : null,
       waitFor(templates, current.role_track, current.current_touch + 1),
       current.geo_region,
+      new Date(),
+      settings,
     );
     Object.assign(patch, {
       funnel_stage: resumeStageFor(current),

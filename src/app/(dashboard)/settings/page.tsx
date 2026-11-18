@@ -23,7 +23,23 @@ interface SettingsResponse {
     portfolioOrigins: string[];
     telegramConfigured: boolean;
     digestTime: string;
+    aiConfigured: boolean;
+    aiModel: string | null;
+    warmup: { cap: number; warmupWeek: number | null };
+    holidays: { INDIA: { date: string; name: string }[]; US: { date: string; name: string }[]; indiaFestivalsUntil: number };
   };
+}
+
+function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 accent-zinc-100" />
+      <span>
+        {label}
+        {hint && <span className="block text-xs text-dim">{hint}</span>}
+      </span>
+    </label>
+  );
 }
 
 type Form = Omit<SystemSettings, "gmail_refresh_token" | "id" | "updated_at" | "next_dispatch_at" | "last_queue_run_at" | "last_digest_on">;
@@ -229,6 +245,39 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        <Section title="Warm-up & holiday calendar" desc="Protects a new sender's reputation and avoids emailing on public holidays.">
+          <div className="grid gap-3">
+            <Toggle
+              checked={form.warmup_enabled}
+              onChange={(v) => setForm({ ...form, warmup_enabled: v })}
+              label="New-sender warm-up"
+              hint={`10/day in week 1, 20 in week 2, 30 in week 3, then your daily cap. Today's cap: ${st.warmup.cap}${st.warmup.warmupWeek ? ` (week ${st.warmup.warmupWeek})` : ""}.`}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Warm-up started</Label>
+                <Input type="date" value={form.warmup_started_on ?? ""} onChange={str("warmup_started_on")} disabled={!form.warmup_enabled} />
+              </div>
+            </div>
+            <Toggle
+              checked={form.skip_holidays}
+              onChange={(v) => setForm({ ...form, skip_holidays: v })}
+              label="Skip public holidays (India & US)"
+              hint={`Next: IN ${st.holidays.INDIA.slice(0, 2).map((h) => `${h.date} ${h.name}`).join(", ")} · US ${st.holidays.US.slice(0, 2).map((h) => `${h.date} ${h.name}`).join(", ")}. India festival dates loaded through ${st.holidays.indiaFestivalsUntil}.`}
+            />
+            <div>
+              <Label hint="all regions · YYYY-MM-DD, comma separated">Extra no-send dates</Label>
+              <Input value={form.extra_blackout_dates ?? ""} onChange={str("extra_blackout_dates")} placeholder="2026-11-24, 2026-12-31" />
+            </div>
+            <Toggle
+              checked={form.auto_resume_ooo}
+              onChange={(v) => setForm({ ...form, auto_resume_ooo: v })}
+              label="Auto-resume after out-of-office replies"
+              hint="Continues the sequence the business day after they're back (AI reads the return date; otherwise 5 business days). At most twice per lead."
+            />
+          </div>
+        </Section>
+
         <Section title="Sender identity & destinations">
           <div className="grid gap-3">
             <div className="grid grid-cols-2 gap-3">
@@ -255,6 +304,12 @@ export default function SettingsPage() {
         <Section title="Connections & environment">
           <StatusRow ok={st.gmailConnected} label="Gmail API" detail={st.gmailConnected ? `token from ${st.gmailTokenSource}` : st.googleClientConfigured ? "not authorised" : "client id/secret missing"} />
           <StatusRow ok={st.resendConfigured} optional label="Resend API" detail={st.resendConfigured ? "ok" : "optional · not used"} />
+          <StatusRow
+            ok={st.aiConfigured}
+            optional
+            label="AI reply triage (Groq)"
+            detail={st.aiConfigured ? (st.aiModel ?? "on") : "optional · set GROQ_API_KEY"}
+          />
           <StatusRow
             ok={st.telegramConfigured}
             label="Telegram alerts"

@@ -76,6 +76,12 @@ function defaultSettings(): Omit<SystemSettings, "updated_at"> {
     next_dispatch_at: null,
     last_queue_run_at: null,
     last_digest_on: "1970-01-01",
+    skip_holidays: true,
+    extra_blackout_dates: null,
+    // warm-up off by default so throughput scenarios aren't capped; S21 turns it on
+    warmup_enabled: false,
+    warmup_started_on: null,
+    auto_resume_ooo: true,
   };
 }
 
@@ -120,6 +126,8 @@ export class Sim {
     state.gmail = this.gmail;
     state.after = [];
     state.telegram = [];
+    state.groq = null;
+    state.groqCalls = 0;
     vi.setSystemTime(new Date(start));
     this.db.tables.system_settings.push({ ...defaultSettings(), ...settings, updated_at: new Date().toISOString() });
     for (const t of seededTemplates()) this.db.tables.sequence_templates.push({ id: crypto.randomUUID(), created_at: new Date().toISOString(), ...t });
@@ -283,10 +291,11 @@ export class Sim {
   }
 
   /** Inbound mail from the lead: a reply in the outreach thread, or a fresh email. */
-  reply(snippet: string, opts: { email?: string; inThread?: boolean } = {}) {
+  reply(snippet: string, opts: { email?: string; inThread?: boolean; body?: string } = {}) {
     const email = opts.email ?? LEAD_EMAIL;
     const lead = this.lead(email);
-    this.gmail.receive({ from: `"${lead.first_name} ${lead.last_name ?? ""}" <${email}>`, snippet, threadId: opts.inThread === false ? null : lead.gmail_thread_id });
+    const msg = this.gmail.receive({ from: `"${lead.first_name} ${lead.last_name ?? ""}" <${email}>`, snippet, threadId: opts.inThread === false ? null : lead.gmail_thread_id });
+    if (opts.body) msg.text = opts.body;
     this.note(`📩 ${opts.inThread === false ? "New email (not a reply)" : "Reply"} from lead: “${snippet}”`);
   }
 

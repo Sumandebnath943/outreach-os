@@ -52,8 +52,15 @@ export default function PrivacyPolicyPage() {
         , including the Limited Use requirements.
       </p>
       <p>
+        <strong>AI triage of replies.</strong> When a reply arrives, its text (with quoted earlier messages removed) may be sent to an AI
+        inference provider, Groq, solely to classify it, summarise it, read an out-of-office return date and suggest a draft answer for
+        me to review. Nothing is sent automatically on the basis of that analysis, the text is not used to train any model, and only the
+        resulting label and summary are stored.
+      </p>
+      <p>
         Google user data is used only to provide the features above. It is not sold, not used for advertising, not shared with third
-        parties, and not used to train AI or machine-learning models. No person other than me reads it.
+        parties except the processors named on this page acting on my behalf, and not used to train AI or machine-learning models. No
+        person other than me reads it.
       </p>
 
       <h2>2. Data about people I contact</h2>
@@ -73,8 +80,8 @@ export default function PrivacyPolicyPage() {
       <h2>3. Where data is kept</h2>
       <p>
         Data is stored in a private Supabase (PostgreSQL) database and processed by the application hosted on Vercel. Email is sent
-        through Gmail, or optionally Resend. These providers process data on my behalf under their own terms. Access to the dashboard is
-        password-protected.
+        through Gmail, or optionally Resend; reply text may be analysed by Groq; alerts are delivered to me through Telegram. These
+        providers process data on my behalf under their own terms. Access to the dashboard is password-protected.
       </p>
 
       <h2>4. Retention</h2>

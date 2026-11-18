@@ -100,7 +100,18 @@ export class FakeGmail {
   }
 
   private api(m: FakeMessage) {
-    return { id: m.id, threadId: m.threadId, labelIds: m.labelIds, snippet: m.snippet, internalDate: m.internalDate, payload: { headers: m.headers } };
+    return {
+      id: m.id,
+      threadId: m.threadId,
+      labelIds: m.labelIds,
+      snippet: m.snippet.slice(0, 200), // Gmail snippets are short previews
+      internalDate: m.internalDate,
+      payload: {
+        mimeType: "multipart/alternative",
+        headers: m.headers,
+        parts: [{ mimeType: "text/plain", body: { data: Buffer.from(m.text, "utf8").toString("base64url") } }],
+      },
+    };
   }
 
   private async send({ requestBody }: { requestBody: { raw: string; threadId?: string } }) {

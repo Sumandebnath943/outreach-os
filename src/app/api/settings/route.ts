@@ -4,6 +4,12 @@ import { isGmailConfigured, refreshTokenFor } from "@/lib/server/gmail";
 import { fail, ok, readJson, route } from "@/lib/server/http";
 import { isResendConfigured } from "@/lib/server/resend";
 import { isTelegramConfigured } from "@/lib/server/telegram";
+import { isAiConfigured } from "@/lib/server/groq";
+import { effectiveDailyLimit } from "@/lib/funnel";
+import { INDIA_FESTIVALS_UNTIL, parseBlackoutDates, upcomingHolidays } from "@/lib/holidays";
+import { formatInTimeZone } from "date-fns-tz";
+
+const today = (tz: string) => formatInTimeZone(new Date(), tz, "yyyy-MM-dd");
 import type { SystemSettings } from "@/lib/types";
 import { EMAIL_RE } from "@/lib/utils";
 
@@ -25,6 +31,14 @@ function publicView(s: SystemSettings) {
       ownerTimezone: env.ownerTimezone(),
       portfolioOrigins: env.portfolioOrigins(),
       telegramConfigured: isTelegramConfigured(),
+      aiConfigured: isAiConfigured(),
+      aiModel: isAiConfigured() ? env.groqModel() : null,
+      warmup: effectiveDailyLimit(s, new Date(), env.ownerTimezone()),
+      holidays: {
+        INDIA: upcomingHolidays("INDIA", today("Asia/Kolkata")),
+        US: upcomingHolidays("US", today("America/New_York")),
+        indiaFestivalsUntil: INDIA_FESTIVALS_UNTIL,
+      },
       digestTime: `${env.digestTime()} ${env.ownerTimezone()}`,
     },
   };
@@ -84,6 +98,22 @@ export const PUT = route(async (req: Request) => {
     patch.sender_email = v;
   }
   if (body.disconnect_gmail) patch.gmail_refresh_token = null;
+  for (const k of ["skip_holidays", "warmup_enabled", "auto_resume_ooo"] as const) {
+    if (body[k] === undefined) continue;
+    if (typeof body[k] !== "boolean") return fail(`${k} must be true or false`);
+    patch[k] = body[k];
+  }
+  if (body.extra_blackout_dates !== undefined) {
+    const raw = String(body.extra_blackout_dates ?? "");
+    const bad = raw.split(/[\s,;]+/).filter((d) => d && !/^\d{4}-\d{2}-\d{2}$/.test(d));
+    if (bad.length) return fail(`No-send dates must be YYYY-MM-DD (check: ${bad.slice(0, 3).join(", ")})`);
+    patch.extra_blackout_dates = parseBlackoutDates(raw).join(", ") || null;
+  }
+  if (body.warmup_started_on !== undefined) {
+    const v = String(body.warmup_started_on ?? "");
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return fail("warmup_started_on must be YYYY-MM-DD");
+    patch.warmup_started_on = v || null;
+  }
 
   const merged = { ...(await getSettings()), ...patch } as SystemSettings;
   if (merged.min_delay_minutes > merged.max_delay_minutes) return fail("min delay cannot exceed max delay");

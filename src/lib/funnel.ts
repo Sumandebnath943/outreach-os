@@ -2,6 +2,8 @@
  * Funnel & sequencer rules — pure and isomorphic so the worker, the API routes
  * and the dashboard all apply exactly the same logic (and so it is unit-testable).
  */
+import { formatInTimeZone } from "date-fns-tz";
+import type { HolidaySettings } from "./holidays";
 import { addBusinessDaysInTz, addCalendarDays } from "./schedule";
 import {
   CLOSED_SUB_STAGES,
@@ -71,10 +73,32 @@ export function waitFor(templates: SequenceTemplate[], track: Lead["role_track"]
  * touch's wait, in the recipient's business days), or now if that moment has already passed.
  * Resuming after an early auto-reply therefore never fires a follow-up ahead of schedule.
  */
-export function resumeDueAt(lastSentAt: Date | null, waitBusinessDays: number, geo: Lead["geo_region"], now = new Date()): Date {
+export function resumeDueAt(
+  lastSentAt: Date | null,
+  waitBusinessDays: number,
+  geo: Lead["geo_region"],
+  now = new Date(),
+  holidays: HolidaySettings = {},
+): Date {
   if (!lastSentAt) return now;
-  const due = addBusinessDaysInTz(lastSentAt, waitBusinessDays, geo);
+  const due = addBusinessDaysInTz(lastSentAt, waitBusinessDays, geo, holidays);
   return due > now ? due : now;
+}
+
+/** New-sender warm-up: daily cap per week since the warm-up started (never above the configured cap). */
+export const WARMUP_STEPS = [10, 20, 30];
+
+export function effectiveDailyLimit(
+  s: Pick<SystemSettings, "daily_send_limit" | "warmup_enabled" | "warmup_started_on">,
+  now = new Date(),
+  tz = "Asia/Kolkata",
+): { cap: number; warmupWeek: number | null } {
+  if (!s.warmup_enabled || !s.warmup_started_on) return { cap: s.daily_send_limit, warmupWeek: null };
+  const today = formatInTimeZone(now, tz, "yyyy-MM-dd");
+  const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${s.warmup_started_on.slice(0, 10)}T00:00:00Z`)) / 86_400_000);
+  const week = Math.max(0, Math.floor(days / 7)) + 1;
+  if (week > WARMUP_STEPS.length) return { cap: s.daily_send_limit, warmupWeek: null };
+  return { cap: Math.min(s.daily_send_limit, WARMUP_STEPS[week - 1]), warmupWeek: week };
 }
 
 /** Stage a lead returns to when its sequence is resumed by hand. */

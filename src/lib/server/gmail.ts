@@ -66,7 +66,7 @@ export async function sendViaGmail(
 
 export type ReplyCheck =
   | { kind: "NONE" }
-  | { kind: "REPLY"; snippet: string; at: string; from: string; gmailMessageId: string; gmailThreadId: string | null }
+  | { kind: "REPLY"; snippet: string; at: string; from: string; gmailMessageId: string; gmailThreadId: string | null; body?: string }
   | { kind: "BOUNCE"; snippet: string; at: string };
 
 const BOUNCE_RE = /mailer-daemon|postmaster|mail delivery (sub)?system/i;
@@ -78,6 +78,30 @@ function toIso(internalDate?: string | null): string {
 /** True when the message arrived strictly after `since` (unknown dates count as new). */
 function isAfter(internalDate: string | null | undefined, since: Date): boolean {
   return !internalDate || Number(internalDate) > since.getTime();
+}
+
+/**
+ * Plain-text body of a message (text/plain part, else tags stripped from text/html), at most
+ * 4,000 characters. Used only to understand a reply; never stored in full.
+ */
+export async function fetchMessageText(gmail: gmail_v1.Gmail, id: string): Promise<string | undefined> {
+  try {
+    const res = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+    const parts: gmail_v1.Schema$MessagePart[] = [];
+    const walk = (p?: gmail_v1.Schema$MessagePart) => {
+      if (!p) return;
+      parts.push(p);
+      p.parts?.forEach(walk);
+    };
+    walk(res.data.payload ?? undefined);
+    const decode = (p?: gmail_v1.Schema$MessagePart) => (p?.body?.data ? Buffer.from(p.body.data, "base64url").toString("utf8") : "");
+    const text = decode(parts.find((p) => p.mimeType === "text/plain"));
+    const html = text ? "" : decode(parts.find((p) => p.mimeType === "text/html"));
+    const body = text || html.replace(/<(br|\/p|\/div)\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ");
+    return body.trim().slice(0, 4000) || undefined;
+  } catch {
+    return undefined; // the snippet is still available
+  }
 }
 
 /** Gmail/OAuth errors that mean the stored credentials are unusable (revoked, expired, wrong client). */
@@ -123,7 +147,15 @@ export async function checkInbound(
           if (classifyDsn(header(msg, "Subject") ?? "", snippet) === "DELAY") continue;
           return { kind: "BOUNCE", snippet, at: toIso(msg.internalDate) };
         }
-        return { kind: "REPLY", snippet, at: toIso(msg.internalDate), from, gmailMessageId: msg.id!, gmailThreadId: msg.threadId ?? lead.gmail_thread_id };
+        return {
+          kind: "REPLY",
+          snippet,
+          at: toIso(msg.internalDate),
+          from,
+          gmailMessageId: msg.id!,
+          gmailThreadId: msg.threadId ?? lead.gmail_thread_id,
+          body: await fetchMessageText(gmail, msg.id!),
+        };
       }
     } catch (e: unknown) {
       const status = (e as { code?: number }).code;
@@ -149,6 +181,7 @@ export async function checkInbound(
         from: header(msg.data, "From") ?? lead.email,
         gmailMessageId: hit.id,
         gmailThreadId: msg.data.threadId ?? hit.threadId ?? null,
+        body: await fetchMessageText(gmail, hit.id),
       };
     }
   }

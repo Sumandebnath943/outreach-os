@@ -137,7 +137,7 @@ export function TopBar() {
           <Metric
             label="Today's Quota"
             value={s ? s.sentToday : "—"}
-            sub={s ? `/ ${s.dailyLimit}` : undefined}
+            sub={s ? `/ ${s.dailyLimit}${s.warmupWeek ? ` · warm-up wk ${s.warmupWeek}` : ""}` : undefined}
             tone={s && s.sentToday >= s.dailyLimit ? "text-rose-300" : undefined}
           />
           <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-line">

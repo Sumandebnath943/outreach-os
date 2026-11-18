@@ -40,12 +40,32 @@ export interface ReplyAlert {
   geo: string;
   gmailLink: string | null;
   dossierLink: string;
+  /** AI read-out (null when the keyword fallback was used). */
+  ai?: { intent: string; summary: string; suggestedReply: string | null } | null;
+  /** Out-of-office: first day back (YYYY-MM-DD), when known. */
+  returnDate?: string | null;
+  /** Out-of-office auto-resume, e.g. "T2 on Wed 2 Dec, 10:00 (IST)". */
+  autoResume?: string | null;
 }
+
+const INTENT_LABEL: Record<string, string> = {
+  INTERVIEW_REQUEST: "Interview request",
+  CALL_REQUEST: "Wants a call",
+  ASKS_FOR_CV: "Asks for your CV",
+  REFERRAL: "Referral / redirect",
+  INFO_REQUEST: "Asks a question",
+  NOT_HIRING_NOW: "Not hiring now",
+  NOT_INTERESTED: "Not interested",
+  UNSUBSCRIBE: "Asked not to be contacted",
+  AUTO_REPLY: "Auto-reply",
+  OTHER: "Other",
+};
 
 export function formatReplyAlert(a: ReplyAlert): string {
   const s = SENTIMENT[a.sentiment] ?? SENTIMENT.NEUTRAL;
-  const action =
-    a.sentiment === "POSITIVE"
+  const action = a.autoResume
+    ? `Paused while they're away${a.returnDate ? ` (back ${a.returnDate})` : ""}. Resumes automatically: ${a.autoResume}. Nothing to do.`
+    : a.sentiment === "POSITIVE"
       ? "👉 Reply from Gmail soon — they are open to talking."
       : a.sentiment === "OUT_OF_OFFICE"
         ? "Sequence paused. Use Resume in the dossier to continue on the original schedule."
@@ -59,11 +79,13 @@ export function formatReplyAlert(a: ReplyAlert): string {
     `<b>${escapeHtml(a.company)}</b> · ${escapeHtml(a.person)}${a.jobTitle ? ` (${escapeHtml(a.jobTitle)})` : ""}`,
     `<code>${escapeHtml(a.email)}</code>`,
     "",
+    ...(a.ai ? [`🧠 <b>${escapeHtml(INTENT_LABEL[a.ai.intent] ?? a.ai.intent)}</b> — ${escapeHtml(a.ai.summary)}`, ""] : []),
     `<i>“${escapeHtml(a.snippet.slice(0, 400))}”</i>`,
     "",
     [a.afterTouch ? `after ${a.afterTouch}` : null, a.roleTrack, a.geo].filter(Boolean).join(" · "),
-    "Follow-ups stopped automatically.",
+    a.autoResume ? "Sequence paused (auto-reply)." : "Follow-ups stopped automatically.",
     action,
+    ...(a.ai?.suggestedReply ? ["", "✍️ <b>Draft reply</b> (not sent — edit and send from Gmail):", `<i>${escapeHtml(a.ai.suggestedReply)}</i>`] : []),
     "",
     [a.gmailLink ? `<a href="${escapeHtml(a.gmailLink)}">Open in Gmail</a>` : null, `<a href="${escapeHtml(a.dossierLink)}">Open dossier</a>`]
       .filter(Boolean)

@@ -52,6 +52,15 @@ export interface SystemSettings {
   last_queue_run_at: string | null;
   /** Owner-timezone date (YYYY-MM-DD) of the last Telegram digest. */
   last_digest_on: string | null;
+  /** Skip public holidays (India / US) when sending and counting business days. */
+  skip_holidays: boolean;
+  /** Extra no-send dates for every region, YYYY-MM-DD, comma separated. */
+  extra_blackout_dates: string | null;
+  /** New-sender warm-up: ramp the daily cap up over the first weeks. */
+  warmup_enabled: boolean;
+  warmup_started_on: string | null;
+  /** Out-of-office replies resume the sequence automatically after the person is back. */
+  auto_resume_ooo: boolean;
   updated_at: string;
 }
 
@@ -138,7 +147,9 @@ export interface DashboardStats {
   triage: number;
   interviewing: number;
   sentToday: number;
+  /** Today's effective cap (lower while the new-sender warm-up is running). */
   dailyLimit: number;
+  warmupWeek: number | null;
   executionMode: ExecutionMode;
   sendProvider: SendProvider;
   pendingApprovals: number;

@@ -1,20 +1,33 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { gmail_v1 } from "@googleapis/gmail";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { countSentSince, db, getSettings, logEvent, must, updateLead } from "./db";
 import { env } from "./env";
 import { checkInbound, gmailClient, isGmailAuthError, sendViaGmail, type ReplyCheck } from "./gmail";
+import { analyzeReply } from "./groq";
 import { appendReference, buildMime, newMessageId, replySubject } from "./mime";
 import { isResendConfigured, sendViaResend } from "./resend";
 import { maybeSendDigest } from "./digest";
 import { isTelegramConfigured, sendTelegram } from "./telegram";
 import { pixelUrl, trackedLinks } from "./tracking";
+import type { ReplyInsight } from "../ai";
 import { dossierUrl, formatReplyAlert, gmailUrl } from "../notify";
-import { branchFor, inboundCutoff, LATE_REPLY_WINDOW_DAYS, pickTemplate, SENDABLE_STAGES, waitFor } from "../funnel";
-import { touchLabel } from "../meta";
+import {
+  branchFor,
+  effectiveDailyLimit,
+  inboundCutoff,
+  LATE_REPLY_WINDOW_DAYS,
+  pickTemplate,
+  resumeDueAt,
+  resumeStageFor,
+  SENDABLE_STAGES,
+  waitFor,
+} from "../funnel";
+import { GEO_TZ, touchLabel } from "../meta";
 import { buildUtm, findUnresolved, mergeVars, toHtml, toPlainText } from "../render";
-import { addBusinessDaysInTz, addCalendarDays, isInSendWindow, startOfTodayIn } from "../schedule";
-import { classifyReply, isAuthErrorMessage, isHardBounceMessage } from "../signals";
+import { addBusinessDaysInTz, addCalendarDays, isInSendWindow, nextBusinessMorning, startOfTodayIn } from "../schedule";
+import { isAuthErrorMessage, isHardBounceMessage } from "../signals";
 import type { BranchVariant, EmailLog, ExecutionMode, Lead, QueueReport, SequenceTemplate, SystemSettings } from "../types";
 
 /** How long a lead stays reserved by the run that is about to send to it. */
@@ -83,8 +96,13 @@ export async function composeNextTouch(
 
 // ───────────────────────────── inbound handling ─────────────────────────────
 
-/** Telegram alert for a detected reply: sentiment, who, snippet and one-tap links to Gmail + the dossier. */
-async function alertReply(lead: Lead, result: Extract<ReplyCheck, { kind: "REPLY" }>, sentiment: string, late: boolean, mailbox?: string) {
+type Reply = Extract<ReplyCheck, { kind: "REPLY" }>;
+
+/** Out-of-office replies resume automatically at most this many times per lead (then a human decides). */
+const MAX_AUTO_RESUMES = 2;
+
+/** Telegram alert for a detected reply: AI triage, who, snippet and one-tap links to Gmail + the dossier. */
+async function alertReply(lead: Lead, result: Reply, insight: ReplyInsight, late: boolean, mailbox: string | undefined, autoResumeAt: Date | null) {
   if (!isTelegramConfigured()) return;
   const last = await db()
     .from("email_logs")
@@ -97,7 +115,7 @@ async function alertReply(lead: Lead, result: Extract<ReplyCheck, { kind: "REPLY
   const linkId = result.gmailThreadId ?? result.gmailMessageId;
   await sendTelegram(
     formatReplyAlert({
-      sentiment,
+      sentiment: insight.sentiment,
       late,
       company: lead.company_name,
       person: [lead.first_name, lead.last_name].filter(Boolean).join(" "),
@@ -109,8 +127,40 @@ async function alertReply(lead: Lead, result: Extract<ReplyCheck, { kind: "REPLY
       geo: lead.geo_region,
       gmailLink: linkId ? gmailUrl(mailbox, linkId) : null,
       dossierLink: dossierUrl(env.appBaseUrl(), lead.id),
+      ai: insight.source === "ai" ? { intent: insight.intent, summary: insight.summary, suggestedReply: insight.suggestedReply } : null,
+      returnDate: insight.returnDate,
+      autoResume: autoResumeAt
+        ? `T${lead.current_touch + 1} on ${formatInTimeZone(autoResumeAt, GEO_TZ[lead.geo_region], "EEE d MMM, HH:mm")} (${lead.geo_region === "INDIA" ? "IST" : lead.geo_region === "US" ? "ET" : "UTC"})`
+        : null,
     }),
   );
+}
+
+/**
+ * When an out-of-office lead's sequence should continue: the first business morning after they
+ * are back (AI-extracted return date, else 5 business days after the auto-reply), and never
+ * earlier than the original schedule. Null when it should not auto-resume.
+ */
+async function oooResumeAt(lead: Lead, insight: ReplyInsight, receivedAt: Date, settings: SystemSettings, templates: SequenceTemplate[]): Promise<Date | null> {
+  if (!settings.auto_resume_ooo || insight.sentiment !== "OUT_OF_OFFICE") return null;
+  if (lead.current_touch < 1 || lead.current_touch >= 4 || !SENDABLE_STAGES.includes(lead.funnel_stage)) return null;
+  const prior = await db().from("tracking_events").select("metadata").eq("lead_id", lead.id).eq("event_type", "REPLY_RECEIVED");
+  const resumes = ((prior.data as { metadata: Record<string, unknown> }[] | null) ?? []).filter((e) => e.metadata?.autoResumeAt).length;
+  if (resumes >= MAX_AUTO_RESUMES) return null;
+
+  const tz = GEO_TZ[lead.geo_region];
+  const back = insight.returnDate ? fromZonedTime(`${insight.returnDate}T12:00:00`, tz) : addBusinessDaysInTz(receivedAt, 5, lead.geo_region, settings);
+  const afterReturn = nextBusinessMorning(back, lead.geo_region, settings);
+  const last = await db()
+    .from("email_logs")
+    .select("sent_at")
+    .eq("lead_id", lead.id)
+    .in("status", ["SENT", "BOUNCED"])
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  const lastAt = (last.data as { sent_at: string }[] | null)?.[0]?.sent_at;
+  const onSchedule = resumeDueAt(lastAt ? new Date(lastAt) : null, waitFor(templates, lead.role_track, lead.current_touch + 1), lead.geo_region, receivedAt, settings);
+  return afterReturn > onSchedule ? afterReturn : onSchedule;
 }
 
 export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: string): Promise<"REPLY" | "BOUNCE" | null> {
@@ -118,31 +168,64 @@ export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: str
   await db().from("email_logs").delete().eq("lead_id", lead.id).eq("status", "QUEUED_FOR_APPROVAL");
 
   if (result.kind === "REPLY") {
-    const sentiment = classifyReply(result.snippet);
+    const settings = await getSettings();
+    const receivedAt = new Date(result.at);
+    const insight = await analyzeReply({
+      text: result.body || result.snippet,
+      from: result.from,
+      receivedAt,
+      timezone: env.ownerTimezone(),
+      leadName: [lead.first_name, lead.last_name].filter(Boolean).join(" "),
+      company: lead.company_name,
+      senderName: settings.sender_name,
+      portfolioUrl: settings.portfolio_base_url,
+    });
     const late = lead.funnel_stage === "CLOSED_ARCHIVE";
-    await updateLead(
-      lead,
-      {
-        funnel_stage: "REPLIED_TRIAGE",
-        sub_stage: late ? "LATE_REPLY" : null,
-        sequence_active: false,
-        next_touch_due_at: null,
-        approval_status: "PENDING",
-        replied_at: result.at,
-        reply_snippet: result.snippet.slice(0, 1000),
-        reply_sentiment: sentiment,
-      },
-      late ? "late_reply_detected" : "reply_detected",
-    );
+    const resumeAt = late ? null : await oooResumeAt(lead, insight, receivedAt, settings, await loadTemplates());
+    const replyFields = {
+      replied_at: result.at,
+      reply_snippet: result.snippet.slice(0, 1000),
+      reply_sentiment: insight.sentiment,
+    } satisfies Partial<Lead>;
+
+    if (resumeAt) {
+      // Auto-reply with a known (or assumed) return: keep the lead in the sequence and continue
+      // after they're back. replied_at moves the inbound cutoff past this auto-reply.
+      await updateLead(
+        lead,
+        { ...replyFields, funnel_stage: resumeStageFor(lead), sub_stage: null, sequence_active: true, next_touch_due_at: resumeAt.toISOString(), approval_status: "PENDING" },
+        "ooo_auto_resume",
+      );
+    } else {
+      await updateLead(
+        lead,
+        {
+          ...replyFields,
+          funnel_stage: "REPLIED_TRIAGE",
+          sub_stage: late ? "LATE_REPLY" : null,
+          sequence_active: false,
+          next_touch_due_at: null,
+          approval_status: "PENDING",
+        },
+        late ? "late_reply_detected" : "reply_detected",
+      );
+    }
     await logEvent(lead.id, "REPLY_RECEIVED", {
       from: result.from,
       snippet: result.snippet.slice(0, 500),
-      sentiment,
+      sentiment: insight.sentiment,
+      intent: insight.intent,
+      summary: insight.summary,
+      urgency: insight.urgency,
+      suggestedReply: insight.suggestedReply,
+      returnDate: insight.returnDate,
+      autoResumeAt: resumeAt?.toISOString() ?? null,
+      analysedBy: insight.source,
       late,
       gmailMessageId: result.gmailMessageId,
       gmailThreadId: result.gmailThreadId,
     });
-    await alertReply(lead, result, sentiment, late, mailbox);
+    await alertReply(lead, result, insight, late, mailbox, resumeAt);
     return "REPLY";
   }
 
@@ -313,8 +396,8 @@ export async function dispatchTouch(
   const now = new Date();
   const nextDue =
     touch < 4
-      ? addBusinessDaysInTz(now, waitFor(templates, lead.role_track, touch + 1), lead.geo_region)
-      : addBusinessDaysInTz(now, settings.archive_after_business_days ?? 4, lead.geo_region);
+      ? addBusinessDaysInTz(now, waitFor(templates, lead.role_track, touch + 1), lead.geo_region, settings)
+      : addBusinessDaysInTz(now, settings.archive_after_business_days ?? 4, lead.geo_region, settings);
   const leadPatch: Partial<Lead> = {
     current_touch: touch,
     original_subject: touch === 1 || !lead.original_subject ? subject : lead.original_subject,
@@ -393,6 +476,7 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
   const settings = await getSettings();
   const gmail = gmailClient(settings);
   const now = new Date();
+  const dailyCap = effectiveDailyLimit(settings, now, env.ownerTimezone());
   const report: QueueReport = {
     ranAt: now.toISOString(),
     trigger,
@@ -408,7 +492,7 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
     inWindow: 0,
     sent: [],
     failed: [],
-    quota: { sent: 0, limit: settings.daily_send_limit },
+    quota: { sent: 0, limit: dailyCap.cap },
     nextDispatchAt: settings.next_dispatch_at,
     notes: [],
   };
@@ -517,8 +601,8 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
 
   // Never send while follow-ups cannot be verified against the inbox.
   if (gmailAuthFailed) return report;
-  if (report.quota.sent >= settings.daily_send_limit) {
-    report.notes.push("Daily send limit reached.");
+  if (report.quota.sent >= dailyCap.cap) {
+    report.notes.push(dailyCap.warmupWeek ? `Warm-up week ${dailyCap.warmupWeek} cap (${dailyCap.cap}/day) reached.` : "Daily send limit reached.");
     return report;
   }
 
