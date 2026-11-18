@@ -29,8 +29,8 @@ export function LeadCard({ lead, onOpen, dragging }: { lead: Lead; onOpen: () =>
       className={cn(
         "group cursor-pointer rounded-md border border-line bg-card p-3 transition-colors hover:border-line-strong hover:bg-raised",
         dragging && "opacity-40",
-        lead.funnel_stage === "WARM_ENGAGED" && "border-amber-500/25",
-        lead.funnel_stage === "REPLIED_TRIAGE" && "border-emerald-500/25",
+        lead.funnel_stage === "WARM_ENGAGED" && "border-stage-engaged/30",
+        lead.funnel_stage === "REPLIED_TRIAGE" && "border-stage-replied/30",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -43,7 +43,7 @@ export function LeadCard({ lead, onOpen, dragging }: { lead: Lead; onOpen: () =>
         </div>
         {warm && lead.sequence_active && (
           <span className="pulse-warm mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/10" title="High intent">
-            <Flame className="h-3 w-3 text-amber-700" />
+            <Flame className="h-3 w-3 text-warning" />
           </span>
         )}
       </div>
@@ -75,11 +75,11 @@ export function LeadCard({ lead, onOpen, dragging }: { lead: Lead; onOpen: () =>
             <Eye className="h-3 w-3" />
             {lead.open_count}
           </span>
-          <span className={cn("flex items-center gap-1", lead.click_count > 0 && "text-amber-700")} title="Clicks">
+          <span className={cn("flex items-center gap-1", lead.click_count > 0 && "text-warning")} title="Clicks">
             <MousePointerClick className="h-3 w-3" />
             {lead.click_count}
           </span>
-          <span className={cn("flex items-center gap-1", pages > 0 && "text-amber-700")} title="Portfolio pages viewed">
+          <span className={cn("flex items-center gap-1", pages > 0 && "text-warning")} title="Portfolio pages viewed">
             <Globe className="h-3 w-3" />
             {pages}
           </span>

@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **18 Nov 2026**, after production end-to-end validation of upgrades 014–015. The owner applied both SQL migrations. CI/build and 153 tests passed. All original and test leads are removed; original settings restored. See docs/UPGRADE_014.md.
+Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger palette to the existing dashboard layout and replacing the public homepage with a minimal sign-in screen. Lint, types, 153 tests, production build and isolated desktop/mobile browser checks passed; deployment verification follows the push.
 
 ---
 
@@ -14,6 +14,7 @@ Last updated: **18 Nov 2026**, after production end-to-end validation of upgrade
 |---|---|
 | Repo | `github.com/Sumandebnath943/outreach-os`, branch `main` (the only branch; push to main) |
 | Production | `https://outreachos.houseofnamus.com` (Vercel, auto-deploys from `main`) |
+| Visual direction | **Existing dashboard layout retained.** Night Ledger warm charcoal content, ivory sidebar, brass primary actions and distinct labeled stage colors. Public home is a minimal sign-in screen, selected by the owner; no mockup layouts were adopted. |
 | Database | Supabase (free tier). Migrations **001–015 applied**. 014 schema and 015 deletion/quota behavior verified in production on 18 Nov 2026 |
 | Scheduler | Supabase Cron (`009`): `outreachos-worker-weekdays` every 10 min Mon–Fri UTC, `outreachos-worker-weekends` hourly at weekends, `outreachos-cleanup` daily (`010`) |
 | Mode | **AUTO_PILOT**, daily cap 45, **warm-up on** (started 2026-11-18 → week 1 = 10/day, week 2 = 20, week 3 = 30, then 45) |
@@ -93,6 +94,7 @@ Last updated: **18 Nov 2026**, after production end-to-end validation of upgrade
 
 | Decision | Reason |
 |---|---|
+| Preserve the current dashboard layout; Night Ledger colors only | Owner rejected all three mockup layouts and explicitly chose colors only (19 Nov). Homepage preference: minimal sign-in. |
 | Local codebase is canonical; GitHub v1 replaced | v1 had security holes and fake sends |
 | Plain personal emails, no HTML design or logo | Inbox placement and reply rates; branding lives on the portfolio |
 | Job-seeker voice from the owner's own emails; no sales patterns; no employer name in the opener | Owner rejected sales-style copy; an employer name in the opener reads like recruiting |
@@ -155,4 +157,5 @@ npm install --package-lock-only
 | 2026-11-18 | `f0c922f` | Owner confirmed migration 013 and authorized push. CI and Vercel succeeded; twelve read-only production page/API checks and schema checks passed. Counts: 299 leads, 294 approved, zero pending, quota 9 test + 1 outreach = 10/10. No sends, approvals or live worker runs triggered. |
 | 2026-11-18 | (upgrade 014) | Built free prechecks and a light workspace based on reviewed Linear/Attio/Carbon guidance; owner selected light direction. 150 tests and production build pass. All 299 original leads removed after private backup; suppression retained. Production E2E validation in progress. |
 | 2026-11-18 | `8957fcd`, `4fb44da` | Deployed free prechecks/light workspace, then final dispatch guards and deletion quota fix. 153 tests + CI/build green; 12 real emails only to test-inbox aliases. Real positive/OOO replies, resumed touch, both T2 branches, four-touch threading, tracking, management, auth and Telegram verified. All original/test leads removed, original settings restored; quota 22/10 remains accurate after deletion. |
+| 2026-11-19 | (Night Ledger theme) | Kept all dashboard structure/controls intact and applied warm charcoal/ivory/brass tokens with eight distinct stage identities and readable status colors. Replaced the homepage with owner-selected minimal sign-in. Lint/types, all 153 tests, production build, local sign-in/error handling, paging/drafts/Trash and desktop/mobile checks passed. No data, queue, sending logic or settings changed. |
 | earlier | — | See `git log` |

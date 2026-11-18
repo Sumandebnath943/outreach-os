@@ -78,10 +78,10 @@ export function TopBar() {
 
   return (
     <>
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-52 flex-col border-r border-line bg-[#f0f2f6] px-3 py-5 lg:flex">
-      <Link href="/pipeline" className="mb-8 flex items-center gap-2 px-3 text-sm font-semibold"><span className="rounded-md bg-blue-700 p-1.5 text-white"><Activity className="h-4 w-4" /></span>OutreachOS</Link>
+    <aside className="light-surface fixed inset-y-0 left-0 z-40 hidden w-52 flex-col border-r border-line bg-bg px-3 py-5 lg:flex">
+      <Link href="/pipeline" className="mb-8 flex items-center gap-2 px-3 text-sm font-semibold"><span className="rounded-md bg-accent p-1.5 text-accent-ink"><Activity className="h-4 w-4" /></span>OutreachOS</Link>
       <div className="mb-2 px-3 text-[10px] font-semibold tracking-wider text-dim uppercase">Workspace</div>
-      <nav aria-label="Main navigation" className="space-y-1">{NAV.map(n => <Link key={n.href} href={n.href} aria-current={pathname.startsWith(n.href) ? 'page' : undefined} className={cn('flex items-center justify-between rounded-md px-3 py-2 text-[13px] transition-colors', pathname.startsWith(n.href) ? 'bg-white font-medium text-blue-700 shadow-sm ring-1 ring-line' : 'text-muted hover:bg-white/70 hover:text-fg')}>{n.label}{n.href === '/approvals' && !!s?.pendingApprovals && <span className="text-xs tabular">{s.pendingApprovals}</span>}</Link>)}</nav>
+      <nav aria-label="Main navigation" className="space-y-1">{NAV.map(n => <Link key={n.href} href={n.href} aria-current={pathname.startsWith(n.href) ? 'page' : undefined} className={cn('flex items-center justify-between rounded-md px-3 py-2 text-[13px] transition-colors', pathname.startsWith(n.href) ? 'bg-card font-medium text-fg shadow-sm ring-1 ring-line' : 'text-muted hover:bg-card hover:text-fg')}>{n.label}{n.href === '/approvals' && !!s?.pendingApprovals && <span className="text-xs tabular">{s.pendingApprovals}</span>}</Link>)}</nav>
       <div className="mt-auto border-t border-line px-3 pt-4 text-xs text-muted"><div className="mb-1 flex items-center gap-2"><span className={cn('h-1.5 w-1.5 rounded-full', s?.gmailConnected ? 'bg-emerald-600' : 'bg-rose-600')} />{s?.gmailConnected ? 'Gmail connected' : 'Gmail disconnected'}</div>Worker {relTime(s?.lastQueueRunAt)}</div>
     </aside>
     <header className="sticky top-0 z-30 border-b border-line bg-card/95 backdrop-blur lg:ml-52">
@@ -106,7 +106,7 @@ export function TopBar() {
               >
                 {n.label}
                 {n.href === "/approvals" && s && s.pendingApprovals > 0 && (
-                  <span className="ml-1.5 rounded bg-amber-400/15 px-1 font-mono text-[10px] text-amber-700">{s.pendingApprovals}</span>
+                  <span className="ml-1.5 rounded bg-amber-400/15 px-1 font-mono text-[10px] text-warning">{s.pendingApprovals}</span>
                 )}
               </Link>
             );
@@ -155,16 +155,16 @@ export function TopBar() {
       </div>
       {pathname === "/pipeline" && <div className="grid grid-cols-3 gap-x-6 gap-y-2 px-5 py-2.5 md:grid-cols-6">
         <Metric label="Total Leads" value={s?.total ?? "—"} />
-        <Metric label="Active in Sequence" value={s?.activeInSequence ?? "—"} />
-        <Metric label="Warm · High Intent" value={s?.warm ?? "—"} />
-        <Metric label="Replies · Triage" value={s?.triage ?? "—"} />
-        <Metric label="Active Interviews" value={s?.interviewing ?? "—"} />
+        <Metric label="Active in Sequence" value={s?.activeInSequence ?? "—"} tone="text-stage-active" />
+        <Metric label="Warm · High Intent" value={s?.warm ?? "—"} tone="text-stage-engaged" />
+        <Metric label="Replies · Triage" value={s?.triage ?? "—"} tone="text-stage-replied" />
+        <Metric label="Active Interviews" value={s?.interviewing ?? "—"} tone="text-stage-interview" />
         <div className="min-w-0">
           <Metric
             label="Today's Quota"
             value={s ? s.sentToday : "—"}
             sub={s ? `/ ${s.dailyLimit}` : undefined}
-            tone={s && s.sentToday >= s.dailyLimit ? "text-rose-700" : undefined}
+            tone={s && s.sentToday >= s.dailyLimit ? "text-danger" : undefined}
           />
           <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-line">
             <div className={cn("h-full", quotaPct >= 100 ? "bg-rose-400" : "bg-fg")} style={{ width: `${quotaPct}%` }} />

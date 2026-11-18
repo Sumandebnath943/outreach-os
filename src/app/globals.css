@@ -1,14 +1,30 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #f7f8fa;
-  --color-card: #ffffff;
-  --color-raised: #f0f2f6;
-  --color-line: #e2e5eb;
-  --color-line-strong: #b8c0cd;
-  --color-fg: #192233;
-  --color-muted: #586477;
-  --color-dim: #69768a;
+  --color-bg: #1b1b1e;
+  --color-card: #252529;
+  --color-raised: #303034;
+  --color-line: #3a393d;
+  --color-line-strong: #716a61;
+  --color-fg: #eeeae3;
+  --color-muted: #b3afa8;
+  --color-dim: #a09b94;
+  --color-accent: #ddbd89;
+  --color-accent-hover: #edcf9e;
+  --color-accent-ink: #282018;
+  --color-info: #8abcf4;
+  --color-success: #a0d4ad;
+  --color-warning: #f0bd72;
+  --color-danger: #f2a2a5;
+  --color-violet: #c4acf5;
+  --color-stage-queued: #b6becb;
+  --color-stage-active: #83bdf9;
+  --color-stage-engaged: #f0bd72;
+  --color-stage-replied: #c4acf5;
+  --color-stage-interview: #78d0d7;
+  --color-stage-offer: #a0d4ad;
+  --color-stage-nurture: #e9a4c8;
+  --color-stage-closed: #f2a2a5;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -27,13 +43,13 @@ body {
 }
 
 ::selection {
-  background: #192233;
-  color: #09090b;
+  background: #ddbd89;
+  color: #282018;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #c7cdd7 transparent;
+  scrollbar-color: #716a61 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -41,7 +57,7 @@ body {
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #c7cdd7;
+  background: #716a61;
   border-radius: 8px;
 }
 *::-webkit-scrollbar-track {
@@ -51,7 +67,7 @@ body {
 input,
 textarea,
 select {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 .tabular {
@@ -109,7 +125,7 @@ select {
 
 /* Rendered email bodies inside the dossier */
 .email-body a {
-  color: #3159bd;
+  color: var(--color-info);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -121,6 +137,28 @@ select {
   font-family: inherit !important;
 }
 
-.home-surface { background: #f7f8fa; }
-:focus-visible { outline: 2px solid #3159bd; outline-offset: 3px; }
-input[type="checkbox"] { accent-color: #3159bd; }
+/* Light surfaces keep their own readable controls and status colors. */
+.light-surface {
+  --color-bg: #eeeae1;
+  --color-card: #fffdf7;
+  --color-raised: #e3ded4;
+  --color-line: #d4cdbf;
+  --color-line-strong: #8d8070;
+  --color-fg: #36342e;
+  --color-muted: #665f55;
+  --color-dim: #70685e;
+  --color-accent: #554932;
+  --color-accent-hover: #423723;
+  --color-accent-ink: #fffdf7;
+  --color-info: #315b85;
+  --color-success: #32633e;
+  --color-warning: #785119;
+  --color-danger: #9c3540;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  color-scheme: light;
+}
+.light-surface :is(input, textarea, select) { color-scheme: light; }
+.sign-in-heading { font-family: Georgia, "Times New Roman", serif; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+input[type="checkbox"] { accent-color: var(--color-accent); }
