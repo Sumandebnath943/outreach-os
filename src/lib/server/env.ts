@@ -6,9 +6,36 @@ function req(name: string): string {
   return v;
 }
 
+/**
+ * Why a Supabase key cannot be the server key, or null when it looks right. Accepts the new
+ * secret keys (`sb_secret_…`) and legacy service_role JWTs; rejects publishable/anon keys,
+ * which would fail with "permission denied" on every table.
+ */
+export function serverKeyProblem(key: string): string | null {
+  if (key.startsWith("sb_publishable_"))
+    return "SUPABASE_SERVICE_ROLE_KEY holds the publishable key — use the secret key (sb_secret_…) from Supabase → Project Settings → API Keys";
+  if (key.startsWith("sb_secret_")) return null;
+  const parts = key.split(".");
+  if (parts.length === 3) {
+    try {
+      const role = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"))?.role;
+      if (role && role !== "service_role")
+        return `SUPABASE_SERVICE_ROLE_KEY is a "${role}" key — use the secret key (sb_secret_…) or the legacy service_role key`;
+    } catch {
+      /* not a JWT — let Supabase report it */
+    }
+  }
+  return null;
+}
+
 export const env = {
   supabaseUrl: () => req("NEXT_PUBLIC_SUPABASE_URL"),
-  supabaseServiceKey: () => req("SUPABASE_SERVICE_ROLE_KEY"),
+  supabaseServiceKey: () => {
+    const key = req("SUPABASE_SERVICE_ROLE_KEY").trim();
+    const problem = serverKeyProblem(key);
+    if (problem) throw new Error(problem);
+    return key;
+  },
   appBaseUrl: () => (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/$/, ""),
   googleClientId: () => process.env.GOOGLE_CLIENT_ID || "",
   googleClientSecret: () => process.env.GOOGLE_CLIENT_SECRET || "",

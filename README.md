@@ -21,6 +21,7 @@ Next.js 15 (App Router) · Supabase Postgres · Gmail API (OAuth2) / Resend · T
 | Runtime extensions (send windows, jitter gate, RPCs, RLS) | `supabase/migrations/002_runtime_extensions.sql` |
 | Hardening (`archived_at`, capped page list, RPCs locked to the service role) | `supabase/migrations/003_hardening.sql` |
 | Contact details (outreach address, no phone number) for an existing database | `supabase/migrations/004_contact_details.sql` |
+| Explicit table grants for the server role (needed on newer Supabase projects) | `supabase/migrations/005_service_role_grants.sql` |
 | Master worker (reply kill-switch → ghost archive → quota → window → jitter → claim → send) | `src/lib/server/sequencer.ts` |
 | Pure funnel rules (branching, templates, stage side effects, reply cutoff) | `src/lib/funnel.ts` |
 | Reply triage, bot filtering, provider error classes | `src/lib/signals.ts` |
@@ -119,11 +120,14 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001`, `002`, `003`, then `004`.
-   A database set up before these changes only needs `003` and `004`.
-2. From *Project Settings → API*, copy the Project URL and the `service_role` key.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `005`.
+   A database set up before these changes only needs `003`, `004` and `005`.
+   - `005` grants table access to the server role. Supabase projects created since mid-2026 no longer do this automatically. Without it, the app fails with *"permission denied for table system_settings"*.
+2. Copy two values into your environment:
+   - The **Project URL**, from *Project Settings → Data API* or the **Connect** button.
+   - The **secret key** (`sb_secret_…`), from *Project Settings → API Keys*, into `SUPABASE_SERVICE_ROLE_KEY`. A legacy `service_role` key also works. The publishable key is rejected with a clear error.
 
-RLS is enabled with no policies, and the RPC functions can only be run by the service role. Only the server-side service-role key can touch the data.
+RLS is enabled with no policies, and only the server role has table and function access. The publishable/anon key can't read or write anything.
 
 ### 2. Environment
 ```bash
