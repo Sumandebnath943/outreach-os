@@ -28,7 +28,7 @@ WORKING RULES
 
 TASK 1 — HEALTH CHECK (do this first, report results)
 a) npm ci
-b) npm run check      → expect lint + typecheck clean and all unit tests passing (110 at hand-off)
+b) npm run check      → expect lint + typecheck clean and all 110 tests passing (87 unit + 23 simulation)
 c) npm run simulate   → expect 23 scenarios passing; read test-results/simulation-report.md
 d) npm run build      → expect success
 e) gh run list --limit 5   → latest CI run on main should be "success"

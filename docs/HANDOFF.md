@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **18 Nov 2026**, after commit `dfc5aaa` (+ docs commit).
+Last updated: **18 Nov 2026**, after the docs accuracy pass (docs checked against the code).
 
 ---
 
@@ -21,8 +21,9 @@ Last updated: **18 Nov 2026**, after commit `dfc5aaa` (+ docs commit).
 | Gmail | Connected (OAuth, `gmail.send` + `gmail.readonly`) |
 | Telegram | Working: reply alerts and 09:30 IST digest |
 | Groq AI | Working: reply triage (`openai/gpt-oss-20b`) |
-| CI | GitHub Actions `CI` green on `dfc5aaa` (lint + types + 110 tests + build) |
-| Tests | `npm run check` (lint, tsc, vitest: 110 tests / 13 files), `npm run simulate` (23 scenarios) |
+| CI | GitHub Actions `CI` green on `87b35a0` (lint + types + 110 tests + build) |
+| Deploy | Vercel deployed `87b35a0`: `/` serves the home page; signed-out `/pipeline` redirects to `/?next=/pipeline`; signed-out APIs return 401 (verified 18 Nov) |
+| Tests | `npm run check` = lint + tsc + vitest: **110 tests in 13 files** (87 unit tests in 12 files + the 23 simulation scenarios). `npm run simulate` runs only the 23 scenarios |
 | Leads in prod | **Only live-test leads** (plus-addresses of the owner's test inbox; tags `nr`, `rp`, `oo`, `wm`). The owner is about to import real leads via CSV. |
 
 ### Open watch item
@@ -76,7 +77,6 @@ Last updated: **18 Nov 2026**, after commit `dfc5aaa` (+ docs commit).
 |---|---|---|---|
 | P1 | Verify `oo` auto-resume on **24 Nov 10:00 IST**, then clean up test leads | agent + owner OK | `npm run live -- status`, then `npm run live -- cleanup` |
 | P2 | Owner imports real leads from `docs/leads-template.csv` | owner | Import page → dry run → confirm. Week 1 cap = 10/day. Blank `geo_region` defaults to INDIA; blank `role_track` is inferred from `target_role_opening` |
-| P2b | Confirm Vercel deployed the home-page commit | agent | `dfc5aaa` got no Vercel status; the docs commit should redeploy. `/` must show the home page, not a Basic-auth popup |
 | P3 | Optional: 5-minute cron for faster alerts | owner (SQL) | `select cron.schedule('outreachos-worker-weekdays', '*/5 * * * 1-5', 'select public.oos_call_worker()');` |
 | P4 | Extend India festival dates beyond 2027 | agent | `src/lib/holidays.ts` (`INDIA_FESTIVALS`) before Dec 2027 |
 | P5 | Watch the first real sends: deliverability, bounces, replies | agent/owner | Analytics page; Telegram |
@@ -108,7 +108,7 @@ Last updated: **18 Nov 2026**, after commit `dfc5aaa` (+ docs commit).
 ```bash
 npm ci                    # install (CI uses this; see lockfile caveat)
 npm run dev               # local app at :3000 (needs .env.local)
-npm run check             # lint + typecheck + unit tests — must pass before every push
+npm run check             # lint + typecheck + all 110 tests (incl. simulation) — must pass before every push
 npm run simulate          # 23-scenario end-to-end simulation → test-results/simulation-report.md
 npm run build             # production build
 npm run live -- status    # live test leads (reads .env; sends only to plus-addresses of LIVE_LEAD_EMAIL)
@@ -143,5 +143,6 @@ npm install --package-lock-only
 | 2026-11-18 | `84fb5a0` | Copy fixes (9+ yrs, candidate-clear openers) |
 | 2026-11-18 | `7bc9b4d` | Job-seeker copy rewrite, per-track Touch 1, new signature (`012`) |
 | 2026-11-18 | `0729918` | Shared signature with labelled tracked links (`011`) |
-| 2026-11-18 | (docs) | HANDOFF, PROJECT_BIBLE, PORTFOLIO_HANDOFF, deck, CSV template, Codex prompt |
+| 2026-11-18 | `87b35a0` | HANDOFF, PROJECT_BIBLE, PORTFOLIO_HANDOFF, deck, CSV template, Codex prompt (also triggered the Vercel deploy that `dfc5aaa` missed) |
+| 2026-11-18 | (docs fix) | Docs checked against the code: test counts, S7, Hybrid subject, OOO behaviour, HEAD probes, alert latency |
 | earlier | — | See `git log` |

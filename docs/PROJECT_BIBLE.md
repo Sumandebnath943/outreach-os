@@ -220,7 +220,7 @@ Manual moves (dragging on the Kanban board, or in the dossier) apply side effect
 - *AI PM:* "AI Product Manager — Suman Debnath, 21+ AI products shipped"
 - *Hybrid:* "Brand Marketing & AI Product roles — Suman Debnath"
 
-A specific opening on the lead replaces the role in the subject.
+On the Brand, AI PMM and AI PM tracks, the subject starts with the lead's `target_role_opening` (or the track's default role when it is blank). The Hybrid subject is fixed.
 
 **Merge variables:**
 
@@ -319,10 +319,12 @@ For each reply:
 
 ### Out-of-office auto-resume
 
-When on (the default), an auto-reply pauses the lead and resumes it automatically:
+When on (the default), an auto-reply does not move the lead to Triage. The lead stays in its sequence with the next touch held back until the person returns (in Approval Gate mode the touch needs approval again):
 - on the first business morning after the person is back (AI-read date, otherwise +5 business days);
 - never earlier than the original schedule;
 - at most twice per lead.
+
+An auto-reply after Touch 4, a third auto-reply, or any auto-reply while the feature is off moves the lead to Triage like a normal reply.
 
 ### Late replies
 
@@ -334,7 +336,7 @@ A reply within 30 days of being archived as Ghosted moves the lead back to Triag
 
 | Signal | How it's captured |
 |---|---|
-| **Opens** | 1×1 pixel (`/api/track/open`, `no-store`, HEAD ignored) |
+| **Opens** | 1×1 pixel (`/api/track/open`, `no-store`). HEAD probes on the pixel and click links are answered but never logged or counted. |
 | **Clicks** | Signed redirect (`/api/track/click`: HMAC over lead + email + target; unsigned links fall back to the portfolio home, so it's not an open redirect) |
 | **Link tags** | Every portfolio/résumé link carries `oid=<lead id>`, a readable `ref=<company>.<person>.<stage>-<touch>` label (shown by the portfolio's own visitor alerts with no code change), and `utm_source=outreachos`, `utm_medium=email`, `utm_campaign=<company>`, `utm_term=<person>`, `utm_content=<stage>-<touch>`. Stage parts are re-stamped at click time. |
 | **Portfolio views** | Optional React snippet (`docs/PORTFOLIO_SNIPPET.md`): CORS beacon to `/api/track/portfolio` with path and cumulative visible time |
@@ -398,7 +400,7 @@ Open in Gmail · Open dossier
 - **Tracking integrity:** signed click links, capped page arrays, CORS allow-list for beacons.
 - **Headers:** `X-Frame-Options: DENY`, `nosniff`, a strict `Referrer-Policy` and `Permissions-Policy`; no `X-Powered-By` header.
 - **Secrets:** environment variables only; cron secrets in Supabase Vault; never committed (`.env*` ignored).
-- **Google data:** only `gmail.send` + `gmail.readonly`. Stores a reply snippet, not full bodies. Limited Use statement published. AI provider disclosed. Zero Data Retention recommended in Groq.
+- **Google data:** only `gmail.send` + `gmail.readonly`. Stores a reply snippet (up to 1,000 characters) and the AI read-out, never full message bodies (the body is only passed to the AI for triage). Limited Use statement published. AI provider disclosed. Zero Data Retention recommended in Groq.
 
 ---
 
@@ -452,7 +454,7 @@ All free tiers at current volume. Groq costs fractions of a cent per reply.
 
 | Layer | What | Command |
 |---|---|---|
-| Unit | funnel rules, schedule and holidays, warm-up, rendering and links, ingest, signals/DSN/bot, MIME, click signing, notify formats, AI parsing, middleware/session, env key checks | `npm test` |
+| Unit | 87 tests in 12 files: funnel rules, schedule and holidays, warm-up, rendering and links, ingest, signals/DSN/bot, MIME, click signing, notify formats, AI parsing, middleware/session, env key checks | `npm test` (runs all 110 tests, including the simulation) |
 | Simulation | 23 end-to-end scenarios on a fast-forwarded clock with an in-memory Supabase and Gmail and captured Telegram/Groq (see below) | `npm run simulate` → `test-results/simulation-report.md` |
 | Live | Real sends to plus-addresses of a test inbox, fast-forwarded by moving due dates; refuses to run if a real lead could be sent | `npm run live -- status/next/sync/resume/archive/cleanup` |
 | CI | lint + types + tests + build on every push | `.github/workflows/ci.yml` |
@@ -467,7 +469,7 @@ All free tiers at current volume. Groq costs fractions of a cent per reply.
 | S4 | Positive reply → interview → offer |
 | S5 | Out-of-office → manual resume → negative reply |
 | S6 | Nurture resurfacing |
-| S7 | Delay notice ignored, then a bounce |
+| S7 | Bounce archives the lead and locks the address against re-import (delay-vs-failure notices are covered by unit tests) |
 | S8 | Reply sent as a new email |
 | S9 | Late reply, inside and outside 30 days |
 | S10 | Approval Gate with an edited draft |

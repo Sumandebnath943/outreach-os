@@ -169,8 +169,7 @@ Import → Touch 1 → (wait 3 business days) → Touch 2 warm/cold → (+5) →
   - Vercel.
 - **Cost:** runs entirely on free tiers; AI costs fractions of a cent per reply.
 - **Quality:**
-  - 110 unit tests;
-  - a **23-scenario simulation** that fast-forwards weeks of outreach in seconds (no-reply, warm path, bots, positive reply, out-of-office, bounces, holidays, warm-up, AI outage, Gmail auth loss…);
+  - 110 automated tests: 87 unit tests plus a **23-scenario simulation** that fast-forwards weeks of outreach in seconds (no-reply, warm path, bots, positive reply, out-of-office, bounces, holidays, warm-up, AI outage, Gmail auth loss…);
   - live test rounds against the real stack;
   - CI on every push.
 
@@ -192,7 +191,7 @@ Import → Touch 1 → (wait 3 business days) → Touch 2 warm/cold → (+5) →
 - The AI correctly labelled an interview request and an out-of-office reply (and extracted the return date).
 - A full 4-touch threaded sequence ran and auto-archived on schedule.
 - A click → Warm → warm follow-up path was verified, with UTM and the readable label visible in the portfolio's own visitor alert.
-- **Zero** duplicate sends across overlapping runs (simulated and live).
+- **Zero** duplicate sends: proven for overlapping worker runs in simulation, and none seen in the live rounds.
 
 *(Add real campaign numbers here once the first real batch runs: reply rate, positive replies, interviews booked.)*
 
@@ -219,7 +218,7 @@ Import → Touch 1 → (wait 3 business days) → Touch 2 warm/cold → (+5) →
 | Holiday calendars | US federal + India |
 | Worker frequency | Every 10 minutes on weekdays |
 | Reply alert latency | ~5–10 minutes |
-| Tests | 110 unit + 23 end-to-end simulation scenarios |
+| Tests | 110 automated (87 unit + 23 end-to-end simulation scenarios) |
 | Hosting cost | Free tiers |
 | Built by | One person, AI-native |
 
