@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { db, must } from "@/lib/server/db";
+import { db, getSettings, must } from "@/lib/server/db";
 import { fail, ok, route } from "@/lib/server/http";
 import { stripImages } from "@/lib/render";
 import type { EmailLog, Lead, TrackingEvent } from "@/lib/types";
@@ -17,8 +17,11 @@ export const GET = route(async (_req: NextRequest, ctx: { params: Promise<{ id: 
     db().from("tracking_events").select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(300),
   ]);
   if (!lead.data) return fail("lead not found", 404);
+  const settings = await getSettings();
   return ok({
     lead: lead.data as Lead,
+    /** Gmail account the threads live in — used for "Open in Gmail" links. */
+    mailbox: settings.sender_email,
     // pixels stripped so viewing the dossier never registers a fake open
     emails: (must(logs, "load logs") as EmailLog[]).map((l) => ({ ...l, body_html: stripImages(l.body_html) })),
     events: must(events, "load events") as TrackingEvent[],

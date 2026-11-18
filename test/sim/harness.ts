@@ -75,6 +75,7 @@ function defaultSettings(): Omit<SystemSettings, "updated_at"> {
     reengage_after_days: 60,
     next_dispatch_at: null,
     last_queue_run_at: null,
+    last_digest_on: "1970-01-01",
   };
 }
 
@@ -118,6 +119,7 @@ export class Sim {
     state.db = this.db;
     state.gmail = this.gmail;
     state.after = [];
+    state.telegram = [];
     vi.setSystemTime(new Date(start));
     this.db.tables.system_settings.push({ ...defaultSettings(), ...settings, updated_at: new Date().toISOString() });
     for (const t of seededTemplates()) this.db.tables.sequence_templates.push({ id: crypto.randomUUID(), created_at: new Date().toISOString(), ...t });
@@ -169,11 +171,19 @@ export class Sim {
     return body;
   }
 
+  /** Telegram messages captured so far (HTML text). */
+  get telegram(): string[] {
+    return state.telegram;
+  }
+
   /** One run of the master worker, as the 10-minute cron would trigger it. */
   async cron(): Promise<QueueReport> {
     this.cronRuns++;
     const before = this.db.tables.leads.map((l) => ({ email: l.email as string, stage: l.funnel_stage as string }));
+    const telegramBefore = state.telegram.length;
     const r = await processQueue("cron");
+    for (const msg of state.telegram.slice(telegramBefore))
+      this.note(`📲 Telegram: ${msg.split("\n")[0].replace(/<[^>]+>/g, "")}`);
     for (const s of r.sent) {
       const log = this.db.tables.email_logs.find((l) => l.lead_id === s.leadId && l.touch_number === s.touch && l.status === "SENT") as unknown as EmailLog;
       this.note(`**${touchLabel(s.touch, s.variant)} sent** to ${s.email} — “${log.subject}”`);

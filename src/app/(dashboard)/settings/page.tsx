@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Link2, Unplug } from "lucide-react";
+import { Check, Copy, Link2, Send, Unplug } from "lucide-react";
 import { api, broadcastRefresh, usePoll } from "@/lib/client";
 import { portfolioSnippet } from "@/lib/snippet";
 import type { SystemSettings } from "@/lib/types";
@@ -21,10 +21,12 @@ interface SettingsResponse {
     appBaseUrl: string;
     ownerTimezone: string;
     portfolioOrigins: string[];
+    telegramConfigured: boolean;
+    digestTime: string;
   };
 }
 
-type Form = Omit<SystemSettings, "gmail_refresh_token" | "id" | "updated_at" | "next_dispatch_at" | "last_queue_run_at">;
+type Form = Omit<SystemSettings, "gmail_refresh_token" | "id" | "updated_at" | "next_dispatch_at" | "last_queue_run_at" | "last_digest_on">;
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -57,6 +59,7 @@ function toForm(s: SettingsResponse["settings"]): Form {
     updated_at: _updated,
     next_dispatch_at: _next,
     last_queue_run_at: _lastRun,
+    last_digest_on: _digest,
     gmail_refresh_token: _token,
     ...form
   } = s as SystemSettings;
@@ -69,6 +72,7 @@ export default function SettingsPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [testing, setTesting] = useState(false);
   const setForm = (f: Form) => {
     setFormState(f);
     setDirty(true);
@@ -107,6 +111,18 @@ export default function SettingsPage() {
   const baseUrlOk = !isLocal && st.appBaseUrl.startsWith("https://");
   const num = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: Number(e.target.value) });
   const str = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+
+  async function sendTestAlert() {
+    setTesting(true);
+    try {
+      await api("/api/notify/test", { method: "POST" });
+      toast("Test alert sent — check Telegram");
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setTesting(false);
+    }
+  }
 
   async function save(extra: Record<string, unknown> = {}) {
     if (!form || !data) return;
@@ -239,6 +255,11 @@ export default function SettingsPage() {
         <Section title="Connections & environment">
           <StatusRow ok={st.gmailConnected} label="Gmail API" detail={st.gmailConnected ? `token from ${st.gmailTokenSource}` : st.googleClientConfigured ? "not authorised" : "client id/secret missing"} />
           <StatusRow ok={st.resendConfigured} optional label="Resend API" detail={st.resendConfigured ? "ok" : "optional · not used"} />
+          <StatusRow
+            ok={st.telegramConfigured}
+            label="Telegram alerts"
+            detail={st.telegramConfigured ? `replies + digest at ${st.digestTime}` : "set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID"}
+          />
           <StatusRow ok={st.cronSecretSet} label="CRON_SECRET" />
           <StatusRow ok={st.trackingSecretSet} label="TRACKING_SECRET" detail={st.trackingSecretSet ? "ok" : "falling back"} />
           <StatusRow ok={st.dashboardAuth} label="Dashboard password" detail={st.dashboardAuth ? "ok" : "OPEN — set DASHBOARD_PASSWORD"} />
@@ -257,6 +278,11 @@ export default function SettingsPage() {
             ) : (
               <Button size="sm" disabled title="Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first">
                 <Link2 className="h-3.5 w-3.5" /> Connect Gmail
+              </Button>
+            )}
+            {st.telegramConfigured && (
+              <Button size="sm" onClick={sendTestAlert} loading={testing}>
+                <Send className="h-3.5 w-3.5" /> Send test alert
               </Button>
             )}
             {st.gmailTokenSource === "database" && (

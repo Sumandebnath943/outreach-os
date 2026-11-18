@@ -47,6 +47,10 @@ export const env = {
   trackingSecret: () =>
     process.env.TRACKING_SECRET || process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "outreach-os",
   ownerTimezone: () => process.env.OWNER_TIMEZONE || "Asia/Kolkata",
+  telegramBotToken: () => (process.env.TELEGRAM_BOT_TOKEN || "").trim(),
+  telegramChatId: () => (process.env.TELEGRAM_CHAT_ID || "").trim(),
+  /** Local time (owner timezone, HH:MM) after which the daily digest goes out. */
+  digestTime: () => (/^\d{2}:\d{2}$/.test(process.env.DIGEST_TIME ?? "") ? process.env.DIGEST_TIME! : "09:30"),
   portfolioOrigins: () =>
     (process.env.PORTFOLIO_ALLOWED_ORIGINS || "https://sumandebnath.houseofnamus.com")
       .split(",")

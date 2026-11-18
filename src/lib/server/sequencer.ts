@@ -6,7 +6,10 @@ import { env } from "./env";
 import { checkInbound, gmailClient, isGmailAuthError, sendViaGmail, type ReplyCheck } from "./gmail";
 import { appendReference, buildMime, newMessageId, replySubject } from "./mime";
 import { isResendConfigured, sendViaResend } from "./resend";
+import { maybeSendDigest } from "./digest";
+import { isTelegramConfigured, sendTelegram } from "./telegram";
 import { pixelUrl, trackedLinks } from "./tracking";
+import { dossierUrl, formatReplyAlert, gmailUrl } from "../notify";
 import { branchFor, inboundCutoff, LATE_REPLY_WINDOW_DAYS, pickTemplate, SENDABLE_STAGES, waitFor } from "../funnel";
 import { touchLabel } from "../meta";
 import { buildUtm, findUnresolved, mergeVars, toHtml, toPlainText } from "../render";
@@ -80,7 +83,37 @@ export async function composeNextTouch(
 
 // ───────────────────────────── inbound handling ─────────────────────────────
 
-export async function applyInbound(lead: Lead, result: ReplyCheck): Promise<"REPLY" | "BOUNCE" | null> {
+/** Telegram alert for a detected reply: sentiment, who, snippet and one-tap links to Gmail + the dossier. */
+async function alertReply(lead: Lead, result: Extract<ReplyCheck, { kind: "REPLY" }>, sentiment: string, late: boolean, mailbox?: string) {
+  if (!isTelegramConfigured()) return;
+  const last = await db()
+    .from("email_logs")
+    .select("touch_number, branch_variant")
+    .eq("lead_id", lead.id)
+    .in("status", ["SENT", "BOUNCED"])
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  const lastLog = (last.data as { touch_number: number; branch_variant: string }[] | null)?.[0];
+  const linkId = result.gmailThreadId ?? result.gmailMessageId;
+  await sendTelegram(
+    formatReplyAlert({
+      sentiment,
+      late,
+      company: lead.company_name,
+      person: [lead.first_name, lead.last_name].filter(Boolean).join(" "),
+      jobTitle: lead.job_title,
+      email: lead.email,
+      snippet: result.snippet,
+      afterTouch: lastLog ? touchLabel(lastLog.touch_number, lastLog.branch_variant) : null,
+      roleTrack: lead.role_track,
+      geo: lead.geo_region,
+      gmailLink: linkId ? gmailUrl(mailbox, linkId) : null,
+      dossierLink: dossierUrl(env.appBaseUrl(), lead.id),
+    }),
+  );
+}
+
+export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: string): Promise<"REPLY" | "BOUNCE" | null> {
   if (result.kind === "NONE") return null;
   await db().from("email_logs").delete().eq("lead_id", lead.id).eq("status", "QUEUED_FOR_APPROVAL");
 
@@ -101,7 +134,15 @@ export async function applyInbound(lead: Lead, result: ReplyCheck): Promise<"REP
       },
       late ? "late_reply_detected" : "reply_detected",
     );
-    await logEvent(lead.id, "REPLY_RECEIVED", { from: result.from, snippet: result.snippet.slice(0, 500), sentiment, late });
+    await logEvent(lead.id, "REPLY_RECEIVED", {
+      from: result.from,
+      snippet: result.snippet.slice(0, 500),
+      sentiment,
+      late,
+      gmailMessageId: result.gmailMessageId,
+      gmailThreadId: result.gmailThreadId,
+    });
+    await alertReply(lead, result, sentiment, late, mailbox);
     return "REPLY";
   }
 
@@ -153,7 +194,7 @@ async function syncInbound(
   firstSent?: Date,
 ): Promise<"REPLY" | "BOUNCE" | null> {
   const sent = firstSent ?? (await firstSentAt([lead.id])).get(lead.id);
-  return applyInbound(lead, await checkInbound(gmail, lead, senderEmail, inboundCutoff(sent, lead)));
+  return applyInbound(lead, await checkInbound(gmail, lead, senderEmail, inboundCutoff(sent, lead)), senderEmail);
 }
 
 async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>, deadline: number) {
@@ -371,6 +412,13 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
     nextDispatchAt: settings.next_dispatch_at,
     notes: [],
   };
+
+  // 0 ─ Morning digest (once per day, after DIGEST_TIME in the owner's timezone).
+  try {
+    if (await maybeSendDigest(settings)) report.notes.push("Daily digest sent to Telegram.");
+  } catch (e) {
+    console.error("[queue] digest failed", e);
+  }
 
   // 1 ─ Resurface nurture leads whose re-engage date has arrived.
   const nurture = await db()

@@ -120,8 +120,10 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001` through `005`.
-   A database set up before these changes only needs `003`, `004` and `005`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `007`.
+   A database set up earlier only needs the ones it hasn't run yet. They are all safe to re-run.
+   - `006` installs the best-practice master sequence (see `docs/TEMPLATE_PROPOSAL.md`).
+   - `007` adds the Telegram digest bookkeeping.
    - `005` grants table access to the server role. Supabase projects created since mid-2026 no longer do this automatically. Without it, the app fails with *"permission denied for table system_settings"*.
 2. Copy two values into your environment:
    - The **Project URL**, from *Project Settings → Data API* or the **Connect** button.
@@ -188,12 +190,44 @@ With one email per 3–6 minute jitter slot and a run every 10 minutes, a day yi
 ### 7. Portfolio telemetry
 Copy `docs/PORTFOLIO_SNIPPET.md` into the portfolio repo (Settings shows a copy with your URL filled in). Mount `<PortfolioTracker />` in `app/layout.tsx`. Then add the portfolio origin to `PORTFOLIO_ALLOWED_ORIGINS`.
 
+Every portfolio and résumé link carries `ref=<lead id>` and UTMs your site's own analytics can read:
+
+| Parameter | Value |
+|---|---|
+| `utm_source` | `outreachos` |
+| `utm_medium` | `email` |
+| `utm_campaign` | company, e.g. `acme-ai` |
+| `utm_term` | person, e.g. `priya-sharma` |
+| `utm_content` | funnel stage at the moment of the click, plus the touch, e.g. `warm_engaged-t2a` |
+
+### 8. Telegram alerts
+OutreachOS messages you on Telegram:
+- **On every reply** (🔥 for positive ones). The message includes the snippet, an **Open in Gmail** link to the exact conversation, and an **Open dossier** link.
+- **A digest each weekday morning** (`DIGEST_TIME`, default 09:30 in `OWNER_TIMEZONE`). It lists replies waiting, approvals due today, warm leads, and yesterday's sends.
+
+To set it up:
+1. In Telegram, message **@BotFather** and send `/newbot`. Copy the **bot token** it gives you.
+2. Open your new bot and send it `/start`. Bots can only message chats that wrote to them first.
+3. Find your **chat ID**: open `https://api.telegram.org/bot<token>/getUpdates` in a browser and copy `message.chat.id`.
+4. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Vercel (and `.env`), then redeploy.
+5. In **Settings**, click **Send test alert**.
+
+### 9. Live test rounds (optional)
+`npm run live -- <command>` runs the real worker against your database and Gmail, fast-forwarding time by moving due dates.
+- It only sends to plus-addresses of `LIVE_LEAD_EMAIL` (e.g. `you+nr@gmail.com`), which arrive in your own inbox.
+- It refuses to run while a real lead could be sent, and never changes settings.
+- Commands: `status`, `next <tag>`, `sync`, `resume <tag>`, `archive <tag>`, `cleanup`.
+
+The fully offline equivalent is `npm run simulate`. It runs 19 scenarios on a fake clock and writes `test-results/simulation-report.md`.
+
 ## Daily operation
 1. Import a CSV in **Import**. New leads land in `LEAD_QUEUED` with Touch 1 due right away.
 2. Each morning in **Approval Gate** mode, open **Approvals**, tweak any drafts, and click **Approve & Dispatch Batch**. The worker then sends approved emails one by one inside each recipient's window.
    In **Auto-Pilot** mode, due touches send without approval.
 3. Watch for amber flame cards. These are warm leads, and they automatically get T2A.
-4. Triage replies from the dossier with **Call booked → Interviewing**, **Not now → Nurture**, or **Rejected**.
+4. When Telegram pings a reply, tap **Open in Gmail** and answer it yourself. OutreachOS never writes back on your behalf.
+5. Triage the lead in its dossier with **Call booked → Interviewing**, **Not now → Nurture**, or **Rejected**.
+6. Check **Analytics** weekly. Judge the copy by reply and click rates per touch, not by opens.
 
 ## Known limits / honest caveats
 - **False opens:** Gmail and Apple fetch images through proxies, so open counts are approximate. Apple Mail Privacy Protection preloads images, sometimes long after delivery, which the bot filter cannot catch. Opening the email from *your own* Sent folder also fires the pixel. Clicks and portfolio views are the reliable intent signals, which is why any one of them makes a lead warm.

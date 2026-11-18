@@ -50,6 +50,8 @@ export interface SystemSettings {
   reengage_after_days: number;
   next_dispatch_at: string | null;
   last_queue_run_at: string | null;
+  /** Owner-timezone date (YYYY-MM-DD) of the last Telegram digest. */
+  last_digest_on: string | null;
   updated_at: string;
 }
 

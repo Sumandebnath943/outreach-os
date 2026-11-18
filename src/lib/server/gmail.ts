@@ -66,7 +66,7 @@ export async function sendViaGmail(
 
 export type ReplyCheck =
   | { kind: "NONE" }
-  | { kind: "REPLY"; snippet: string; at: string; from: string; gmailMessageId: string }
+  | { kind: "REPLY"; snippet: string; at: string; from: string; gmailMessageId: string; gmailThreadId: string | null }
   | { kind: "BOUNCE"; snippet: string; at: string };
 
 const BOUNCE_RE = /mailer-daemon|postmaster|mail delivery (sub)?system/i;
@@ -119,7 +119,7 @@ export async function checkInbound(
         if (addressOf(from) === me) continue;
         const snippet = decodeEntities(msg.snippet ?? "");
         if (BOUNCE_RE.test(from)) return { kind: "BOUNCE", snippet, at: toIso(msg.internalDate) };
-        return { kind: "REPLY", snippet, at: toIso(msg.internalDate), from, gmailMessageId: msg.id! };
+        return { kind: "REPLY", snippet, at: toIso(msg.internalDate), from, gmailMessageId: msg.id!, gmailThreadId: msg.threadId ?? lead.gmail_thread_id };
       }
     } catch (e: unknown) {
       const status = (e as { code?: number }).code;
@@ -144,6 +144,7 @@ export async function checkInbound(
         at: toIso(msg.data.internalDate),
         from: header(msg.data, "From") ?? lead.email,
         gmailMessageId: hit.id,
+        gmailThreadId: msg.data.threadId ?? hit.threadId ?? null,
       };
     }
   }

@@ -15,6 +15,8 @@ vi.hoisted(() => {
     APP_BASE_URL: "https://outreachos.houseofnamus.com",
     TRACKING_SECRET: "sim-tracking-secret",
     OWNER_TIMEZONE: "Asia/Kolkata",
+    TELEGRAM_BOT_TOKEN: "123456:sim-bot-token",
+    TELEGRAM_CHAT_ID: "424242",
   });
 });
 
@@ -46,7 +48,7 @@ vi.mock("next/server", async (importOriginal) => {
 });
 
 import { processQueue } from "@/lib/server/sequencer";
-import { alias, CHROME_UA, DAY, defaultLead, fmt, GMAIL_PROXY_UA, LEAD_EMAIL, SCANNER_UA, Sim } from "./sim/harness";
+import { alias, CHROME_UA, DAY, defaultLead, fmt, GMAIL_PROXY_UA, LEAD_EMAIL, SCANNER_UA, SENDER, Sim } from "./sim/harness";
 
 const HOUR = 60 * 60 * 1000;
 const MON_0830_IST = "2026-11-23T03:00:00.000Z"; // Mon 23 Nov 2026, 08:30 IST — before the 10:00 window
@@ -58,10 +60,18 @@ function record(sim: Sim, result: string[]) {
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
+  // Telegram is the only outbound HTTP the app makes here — capture it instead of sending.
+  vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+    if (!String(url).startsWith("https://api.telegram.org/")) throw new Error(`unexpected fetch ${url}`);
+    const { state } = await import("./sim/state");
+    state.telegram.push(JSON.parse(String(init?.body)).text);
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  });
 });
 
 afterAll(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   const md = [
     "# OutreachOS · end-to-end simulation report",
     "",
@@ -106,8 +116,12 @@ describe("end-to-end pipeline simulation", () => {
     }
     expect(h(3, "References").split(" ")).toEqual([h(0, "Message-ID"), h(1, "Message-ID"), h(2, "Message-ID")]);
 
-    // Copy & links
+    // Copy & links (approved best-practice copy: short subject, ~95-word T1, one question)
+    expect(h(0, "Subject")).toBe("Marketer who builds AI — Acme AI?");
     expect(msgs[0].text).toMatch(/^Hi Suman,/);
+    expect(msgs[0].text).toContain("Open to a 15-minute call about AI Product Marketing Manager roles at Acme AI?");
+    const words = (s: string) => s.replace(/https?:\/\/\S+/g, "").split(/\s+/).filter(Boolean).length;
+    expect(words(msgs[0].text)).toBeLessThanOrEqual(125);
     expect(msgs[0].text).not.toMatch(/\+91|7980/);
     expect(msgs[0].text).toContain("utm_source=outreachos&utm_medium=email&utm_campaign=acme-ai&utm_term=suman-test&utm_content=outreach_active-t1");
     expect(msgs[3].text).toContain("utm_content=outreach_active-t4");
@@ -143,9 +157,8 @@ describe("end-to-end pipeline simulation", () => {
 
     await sim.portfolioView("/agents/migi", 84);
     await sim.portfolioView("/resume", 41);
-    const resume = await sim.click("resume");
-    expect(resume.pathname).toBe("/resume");
-    expect(resume.searchParams.get("utm_content")).toBe("warm_engaged-t1"); // now warm
+    const again = await sim.click("portfolio");
+    expect(again.searchParams.get("utm_content")).toBe("warm_engaged-t1"); // now warm
 
     const warm = sim.lead();
     expect(warm.portfolio_pages_viewed).toEqual(["/agents/migi", "/resume"]);
@@ -157,13 +170,13 @@ describe("end-to-end pipeline simulation", () => {
     await sim.runUntil(() => sim.touches().length === 2);
     expect(sim.touches()).toEqual(["T1", "T2A"]);
     const t2a = sim.gmail.sentTo(LEAD_EMAIL)[1];
-    expect(t2a.text).toContain("2-minute live walkthrough");
+    expect(t2a.text).toContain("live in 2 minutes");
     expect(t2a.text).toContain("utm_content=warm_engaged-t2a");
 
     record(sim, [
       "A real (Chrome) click 2h after T1 promoted the lead to WARM_ENGAGED exactly once",
       "Landing URL carried ref + utm_campaign=acme-ai, utm_term=suman-test, utm_content=outreach_active-t1 (stage at click)",
-      "Portfolio beacon logged /agents/migi (84s) and /resume (41s); later clicks were stamped warm_engaged-t1",
+      "Portfolio beacon logged /agents/migi (84s) and /resume (41s); a later click was stamped warm_engaged-t1",
       "Touch 2 switched to the warm branch (T2A walkthrough offer), links stamped warm_engaged-t2a",
     ]);
   });
@@ -185,7 +198,7 @@ describe("end-to-end pipeline simulation", () => {
 
     await sim.runUntil(() => sim.touches().length === 2);
     expect(sim.touches()).toEqual(["T1", "T2B"]);
-    expect(sim.gmail.sentTo(LEAD_EMAIL)[1].text).toContain("Floating this back to the top of your inbox");
+    expect(sim.gmail.sentTo(LEAD_EMAIL)[1].text).toContain("Bumping this in case it got buried");
 
     sim.advance(3 * HOUR);
     await sim.open();
@@ -531,5 +544,79 @@ describe("end-to-end pipeline simulation", () => {
     await sim.runFor(5);
     expect(sim.gmail.sentTo(LEAD_EMAIL)).toHaveLength(1);
     record(sim, ["Write retried 3×, then the lead was paused with a clear error — no duplicate email over the next 5 days"]);
+  });
+
+  it("S18 · Telegram reply alerts: hot positive reply, auto-reply and a refusal — each with Gmail + dossier links", async () => {
+    const sim = new Sim("S18 · Telegram alerts on replies", MON_0830_IST);
+    const [hot, ooo, no] = ["hot", "ooo", "no"].map(alias);
+    for (const [i, email] of [hot, ooo, no].entries())
+      await sim.importLead(defaultLead({ email, first_name: ["Priya", "Jordan", "Alex"][i], last_name: "Rao", company_name: ["Acme AI", "Nimbus", "Orbit"][i] }));
+    await sim.runUntil(() => [hot, ooo, no].every((e) => sim.touches(e).length === 1));
+    sim.advance(3 * 60 * 60 * 1000);
+    sim.telegram.length = 0;
+
+    sim.reply("Thanks Suman — yes, let's schedule an interview. Are you free Thursday 3pm IST?", { email: hot, inThread: false });
+    sim.reply("Automatic reply: I'm out of the office until Monday.", { email: ooo });
+    sim.reply("Thanks, but we're not interested at this time.", { email: no });
+    await sim.cron();
+
+    const alerts = sim.telegram.filter((m) => !m.startsWith("📋"));
+    expect(alerts).toHaveLength(3);
+    const hotMsg = alerts.find((m) => m.includes("Acme AI"))!;
+    expect(hotMsg.startsWith("🔥 <b>HOT — positive reply</b>")).toBe(true);
+    expect(hotMsg).toContain("Priya Rao");
+    expect(hotMsg).toContain("let's schedule an interview");
+    expect(hotMsg).toContain("Reply from Gmail soon");
+    // the reply came as a new email → the link opens THAT thread (in the sending account), not the outreach thread
+    const replyThread = sim.gmail.messages.find((m) => m.snippet.startsWith("Thanks Suman"))!.threadId;
+    expect(replyThread).not.toBe(sim.lead(hot).gmail_thread_id);
+    expect(hotMsg).toContain(`https://mail.google.com/mail/?authuser=${encodeURIComponent(SENDER)}#all/${replyThread}`);
+    expect(hotMsg).toContain(`https://outreachos.houseofnamus.com/?lead=${sim.lead(hot).id}`);
+    expect(alerts.find((m) => m.includes("Nimbus"))!.startsWith("🌴")).toBe(true);
+    expect(alerts.find((m) => m.includes("Orbit"))!.startsWith("✋")).toBe(true);
+
+    // exactly one alert per reply — later runs don't repeat them
+    await sim.runFor(1);
+    expect(sim.telegram.filter((m) => !m.startsWith("📋"))).toHaveLength(3);
+
+    sim.note(`Hot alert text:<br>${hotMsg.replace(/<[^>]+>/g, "").replace(/\n+/g, "<br>").replace(/\|/g, "/")}`);
+    record(sim, [
+      "One Telegram message per reply, sent on the run that detected it — never repeated",
+      "Positive reply flagged 🔥 HOT with the person, company, snippet and “reply from Gmail soon”",
+      "Gmail link opens the reply's own thread (it arrived as a new email); dossier link opens the lead",
+      "Out-of-office 🌴 and not-interested ✋ alerts say what to do next",
+    ]);
+  });
+
+  it("S19 · morning digest: once per weekday after 09:30 IST, with replies, approvals and warm leads", async () => {
+    const sim = new Sim("S19 · Daily Telegram digest", MON_0830_IST, { execution_mode: "APPROVAL_GATE" });
+    await sim.importLead();
+    await sim.importLead(defaultLead({ email: alias("b"), first_name: "Ben", company_name: "Globex" }));
+    await sim.runUntil(() => Date.now() >= new Date("2026-11-23T04:10:00Z").getTime());
+
+    const digests = () => sim.telegram.filter((m) => m.startsWith("📋"));
+    expect(digests()).toHaveLength(1); // first run after 09:30 IST (04:00Z) only
+    expect(digests()[0]).toContain("OutreachOS · Mon 23 Nov");
+    expect(digests()[0]).toContain("2 touches waiting for approval");
+    expect(digests()[0]).toContain("No replies waiting in triage.");
+
+    await sim.approvals({ action: "approve", leadIds: [sim.lead().id] });
+    await sim.runUntil(() => sim.touches().length === 1);
+    sim.advance(60 * 60 * 1000);
+    sim.reply("Happy to chat — send over a few times?");
+    await sim.cron();
+    await sim.runUntil(() => digests().length === 2, 2); // Tuesday's digest
+    const tue = digests()[1];
+    expect(tue).toContain("OutreachOS · Tue 24 Nov");
+    expect(tue).toContain("Replies waiting in triage: 1");
+    expect(tue).toContain("🔥");
+    expect(tue).toContain("Sent yesterday: 1");
+
+    sim.note(`Tuesday digest text:<br>${tue.replace(/<[^>]+>/g, "").replace(/\n+/g, "<br>").replace(/\|/g, "/")}`);
+    record(sim, [
+      "Exactly one digest per weekday, on the first worker run after 09:30 IST",
+      "Monday: 2 touches waiting for approval, no replies",
+      "Tuesday: 1 reply waiting (🔥 positive, linked to its dossier), 1 email sent yesterday",
+    ]);
   });
 });

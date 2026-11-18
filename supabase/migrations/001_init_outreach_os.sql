@@ -130,99 +130,75 @@ create index idx_events_lead on public.tracking_events(lead_id, created_at desc)
 
 insert into public.sequence_templates (role_track, touch_number, branch_variant, subject_template, body_template, wait_business_days, same_thread) values
 ('HYBRID_DEFAULT', 1, 'STANDARD',
-$t$9+ yrs Brand Marketing + 21 AI products shipped solo — Open roles at {{company_name}}?$t$,
+$t$Marketer who builds AI — {{company_name}}?$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}This is a cold outreach, so I’ll keep it brief and let the work speak for itself.
+{{custom_icebreaker}}Most teams hiring for {{target_role_opening}} end up choosing between a marketer who can't build and an AI builder who doesn't get brand. I do both:
 
-Most teams hiring right now have to choose between a marketer who doesn’t know how to build, or an AI builder who doesn’t understand brand, positioning, and business growth. I bring both.
+- 9+ years leading brand, digital and performance marketing, now as Senior Brand Marketing Manager at PIBM (20+ GTM launches, 30% lower CPA).
+- 21+ AI products shipped solo in the last 2 years, including MIGI, a 46-agent operator OS running 40–50 jobs a day for under $5 total.
 
-Over the last 9+ years, I’ve led brand, digital, and performance marketing—currently as Senior Brand Marketing Manager at PIBM, where I:
+Work and live systems: {{tracked_portfolio_url}}
 
-- Handle a cross-functional team across digital marketing, brand design, and web development, managing annual budgets.
-- Drove organic traffic growth across a 400-page web ecosystem, while delivering competitive ROAS and a 30% reduction in CPA on paid acquisition.
-- Executed 20+ end-to-end GTM launches (99%+ on-time and on-budget) and built custom GenAI creative pipelines that cut manual design and web turnaround from weeks to hours.
+Open to a 15-minute call about {{target_role_opening}} roles at {{company_name}}?
 
-In parallel over the last 2 years, I taught myself AI-native systems engineering and independently designed, built, and shipped 21+ working products (across Next.js, FastAPI, Supabase, and LLM APIs):
-
-- MIGI: A 46-agent autonomous operator OS (with a Multi-Agent squad and private RAG brain) guarded by 500+ automated eval checks, running 40–50 jobs/day for under $5 total.
-- ROASmind: An AI-native marketing OS unifying Meta, Google, and LinkedIn ads to streamline campaign operations and reduce overhead.
-- Custom Models & Audited Apps: Trained a 47M-parameter SLM from scratch (PentaCMD-47M, ~87% exact match on 299K pairs), fine-tuned a coding model (Qdex-1.5B, 1.2% to 42.1% HumanEval), and built an audited Retail Banking RM Copilot passing 38 security tests.
-
-I’m looking to move into a senior role—such as Senior Brand Marketing Manager, AI Product Marketing Manager (AI PMM), or AI Product Manager—where I can take ownership of strategy and bridge product capability with go-to-market growth.
-
-Full portfolio, live systems & 34 technical/GTM write-ups:
-{{tracked_portfolio_url}} (It’s fully agentic-ready—feel free to point your AI assistant at it, or press ⌘K / type "hire" anywhere on the site).
-
-If this aligns with your current or upcoming needs at {{company_name}}, I’d be glad to connect. My résumé is available here: {{tracked_resume_url}}
-
-Best regards,
+Best,
 Suman Debnath
-hire.sumandebnath@gmail.com
-Portfolio: sumandebnath.houseofnamus.com$t$,
+hire.sumandebnath@gmail.com$t$,
 0, false),
 
 ('HYBRID_DEFAULT', 2, 'WARM',
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Following up quickly on my note below—I know hiring inboxes move fast.
+Quick follow-up on my note below. If you're hiring for {{target_role_opening}} at {{company_name}}, I can walk you through MIGI or ROASmind live in 2 minutes — quicker than reading about them.
 
-If you're currently evaluating candidates for Brand, Growth, or AI Product Marketing at {{company_name}}, I’d love to show you a quick 2-minute live walkthrough of how I architected MIGI (my 46-agent operator OS running on under $5) and ROASmind (unified Meta/Google/LinkedIn ad orchestration).
+{{tracked_portfolio_url}}
 
-You can also explore the live interactive systems directly here: {{tracked_portfolio_url}}
-
-Open to a quick 15-minute intro call this week?
+Would a 15-minute call this week or next work?
 
 Best,
-Suman Debnath$t$,
+Suman$t$,
 3, true),
 
 ('HYBRID_DEFAULT', 2, 'COLD',
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Floating this back to the top of your inbox in case it got buried.
+Bumping this in case it got buried. The short version: 9+ years of brand and growth leadership, plus 21+ AI products I built and shipped myself.
 
-In short: I bring 9+ years of full-funnel Brand & Digital Marketing leadership (managing cross-functional teams, 400-page web ecosystems, and 20+ GTM launches) paired with 21+ AI products shipped solo—including a 46-agent autonomous fleet and custom-trained language models.
+Is {{company_name}} hiring for {{target_role_opening}} this quarter? A one-line reply either way helps.
 
-Everything is verifiable and live here: {{tracked_portfolio_url}}
-
-Would love to connect if {{company_name}} has current or upcoming openings across Senior Brand Marketing, AI PMM, or AI Product roles.
-
-Best regards,
-Suman Debnath$t$,
+Best,
+Suman$t$,
 3, true),
 
 ('HYBRID_DEFAULT', 3, 'STANDARD',
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Instead of just sending another "checking in" note, wanted to share two practical breakdowns I recently published from my own engineering & marketing notebook that might be useful to your team at {{company_name}}:
+Rather than another check-in, two short write-ups that may be useful to the {{company_name}} team:
 
-- Agentic Readiness & AEO: How I wired Next.js content negotiation and structured answer blocks so AI engines (ChatGPT, Claude, Perplexity) extract clean Markdown and cite the domain within 48 hours.
-- Lean Agentic Architecture: How I keep a 46-agent autonomous marketing & ops fleet running 40–50 tasks a day for under $5 total using model routing and 500+ automated eval checks.
+- Agentic readiness: how structured answer blocks got ChatGPT, Claude and Perplexity citing a site within 48 hours.
+- Running a 46-agent fleet at 40–50 tasks a day for under $5 total, with model routing and 500+ automated eval checks.
 
-Both write-ups (and all 21 live systems) are on my portfolio: {{tracked_portfolio_url}}
+Both are here: {{tracked_portfolio_url}}
 
-If you ever need someone who can own both the GTM narrative and the AI systems underneath it, I’d love to chat.
+If owning both the GTM story and the AI systems behind it is ever on your roadmap, I'd love to talk.
 
 Best,
-Suman Debnath$t$,
+Suman$t$,
 5, true),
 
 ('HYBRID_DEFAULT', 4, 'STANDARD',
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-I’ll assume the timing isn’t quite right for a Senior Brand Marketing, AI PMM, or AI PM addition at {{company_name}}, so I’ll close the loop here and won't clutter your inbox further.
+I'll assume the timing isn't right and close the loop here — no more follow-ups from me.
 
-Leaving my live portfolio here in case roadmaps shift next quarter: {{tracked_portfolio_url}}
+If {{target_role_opening}} hiring opens up at {{company_name}} later, my work stays live at {{tracked_portfolio_url}}.
 
-Wishing you and the {{company_name}} team a great quarter ahead.
-
-Best regards,
-Suman Debnath
-hire.sumandebnath@gmail.com$t$,
+All the best to you and the team,
+Suman Debnath$t$,
 6, true)
 on conflict (role_track, touch_number, branch_variant) do nothing;

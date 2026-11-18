@@ -30,6 +30,7 @@ import {
   type Lead,
   type TrackingEvent,
 } from "@/lib/types";
+import { gmailUrl } from "@/lib/notify";
 import { cn, fullName, relTime } from "@/lib/utils";
 import { Badge, Button, Input, Label, Select, Textarea, toast } from "../ui";
 
@@ -37,6 +38,20 @@ interface Dossier {
   lead: Lead;
   emails: EmailLog[];
   events: TrackingEvent[];
+  mailbox: string | null;
+}
+
+function GmailLink({ mailbox, id, label }: { mailbox: string | null; id: string; label: string }) {
+  return (
+    <a
+      href={gmailUrl(mailbox, id)}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-card px-2.5 text-xs font-medium text-fg hover:border-line-strong hover:bg-raised"
+    >
+      <Mail className="h-3 w-3" /> {label}
+    </a>
+  );
 }
 
 const fmt = (iso: string | null) =>
@@ -169,6 +184,10 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
 
   const lead = data?.lead;
   const events = data?.events ?? [];
+  // the latest reply's own thread (a reply may arrive as a brand-new email, outside the outreach thread)
+  const lastReply = events.find((e) => e.event_type === "REPLY_RECEIVED");
+  const replyLinkId =
+    (lastReply?.metadata.gmailThreadId as string | undefined) ?? (lastReply?.metadata.gmailMessageId as string | undefined) ?? lead?.gmail_thread_id ?? null;
   const emails = data?.emails ?? [];
   const subOptions =
     lead?.funnel_stage === "INTERVIEWING"
@@ -218,6 +237,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                     <span className="font-mono">
                       {GEO_LABEL[lead.geo_region]} · {localTimeLabel(lead.geo_region)}
                     </span>
+                    {lead.gmail_thread_id && <GmailLink mailbox={data?.mailbox ?? null} id={lead.gmail_thread_id} label="Open thread in Gmail" />}
                   </div>
                 </div>
                 <button onClick={onClose} className="text-dim hover:text-fg" aria-label="Close dossier">
@@ -341,6 +361,11 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                       </div>
                     </div>
                     <p className="mt-2 text-sm leading-relaxed text-fg/90">“{lead.reply_snippet}”</p>
+                    {replyLinkId && (
+                      <div className="mt-2">
+                        <GmailLink mailbox={data?.mailbox ?? null} id={replyLinkId} label="Open reply in Gmail" />
+                      </div>
+                    )}
                     {lead.funnel_stage === "REPLIED_TRIAGE" && (
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         <Button size="sm" variant="success" onClick={() => patch({ funnel_stage: "INTERVIEWING", sub_stage: "HR_SCREEN" }, "Promoted to Interviewing")}>

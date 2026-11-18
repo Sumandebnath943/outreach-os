@@ -3,6 +3,7 @@ import { env } from "@/lib/server/env";
 import { isGmailConfigured, refreshTokenFor } from "@/lib/server/gmail";
 import { fail, ok, readJson, route } from "@/lib/server/http";
 import { isResendConfigured } from "@/lib/server/resend";
+import { isTelegramConfigured } from "@/lib/server/telegram";
 import type { SystemSettings } from "@/lib/types";
 import { EMAIL_RE } from "@/lib/utils";
 
@@ -23,6 +24,8 @@ function publicView(s: SystemSettings) {
       appBaseUrl: env.appBaseUrl(),
       ownerTimezone: env.ownerTimezone(),
       portfolioOrigins: env.portfolioOrigins(),
+      telegramConfigured: isTelegramConfigured(),
+      digestTime: `${env.digestTime()} ${env.ownerTimezone()}`,
     },
   };
 }

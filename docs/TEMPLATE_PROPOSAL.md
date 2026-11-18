@@ -1,6 +1,6 @@
-# Template rewrite proposal (awaiting approval)
+# Template rewrite (approved 18 Nov 2026)
 
-Nothing here is live yet. Once approved, migration `006` replaces the `HYBRID_DEFAULT` templates and the seed in `001` is updated to match. Role-track overrides you fork in the Studio are not touched.
+Approved as drafted. It's applied by migration `006_best_practice_templates.sql`, which replaces the `HYBRID_DEFAULT` subjects and bodies, and new installs get it from the seed in `001`. Role-track overrides forked in the Studio and wait days are not touched.
 
 **Facts:** every claim comes from the current copy: PIBM, 9+ years, 20+ GTM launches, 30% lower CPA, 21+ AI products, MIGI (46 agents, 40–50 jobs a day, under $5 total), ROASmind, the AEO write-up and the eval checks. Nothing is new.
 

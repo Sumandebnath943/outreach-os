@@ -7,4 +7,6 @@ export const state = {
   gmail: null as unknown as FakeGmail,
   /** Callbacks passed to next/server `after()` — flushed explicitly by the harness. */
   after: [] as (() => unknown)[],
+  /** Telegram messages the app tried to send (captured, never sent). */
+  telegram: [] as string[],
 };

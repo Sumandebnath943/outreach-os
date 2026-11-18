@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { api, broadcastRefresh, usePoll } from "@/lib/client";
 import { STAGE_META } from "@/lib/meta";
 import { FUNNEL_STAGES, GEO_REGIONS, ROLE_TRACKS, type FunnelStage, type Lead } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, UUID_RE } from "@/lib/utils";
 import { Button, Input, Select, toast } from "../ui";
 import { AddLeadDialog } from "./AddLeadDialog";
 import { LeadCard } from "./LeadCard";
@@ -19,6 +19,12 @@ export function Board() {
   const [geo, setGeo] = useState("");
   const [track, setTrack] = useState("");
   const [over, setOver] = useState<FunnelStage | null>(null);
+
+  // Deep link from Telegram alerts: /?lead=<id> opens that lead's dossier.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("lead");
+    if (id && UUID_RE.test(id)) setOpenId(id);
+  }, []);
 
   const columns = useMemo(() => {
     const needle = q.trim().toLowerCase();
