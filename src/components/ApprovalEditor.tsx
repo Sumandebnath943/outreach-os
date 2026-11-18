@@ -87,7 +87,7 @@ export function ApprovalCard({
             <span className="flex items-center gap-1 font-mono text-[10px] text-dim">
               <Clock className="h-3 w-3" />
               due {relTime(item.dueAt)} · {localTimeLabel(lead.geo_region)} ·{" "}
-              <span className={item.inWindow ? "text-emerald-400" : "text-amber-400"}>{item.inWindow ? "in window" : "outside window"}</span>
+              <span className={item.inWindow ? "text-emerald-700" : "text-amber-700"}>{item.inWindow ? "in window" : "outside window"}</span>
             </span>
           </div>
         </div>
@@ -125,7 +125,7 @@ export function ApprovalCard({
       </div>
 
       {item.error ? (
-        <div className="px-4 py-3 font-mono text-xs text-rose-300">{item.error}</div>
+        <div className="px-4 py-3 font-mono text-xs text-rose-700">{item.error}</div>
       ) : preview ? (
         <div className="px-4 py-4">
           <div className="mb-3 text-sm font-medium">{subject}</div>

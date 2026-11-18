@@ -2,13 +2,13 @@ import type { FunnelStage, GeoRegion, RoleTrack } from "./types";
 
 export const STAGE_META: Record<FunnelStage, { n: string; label: string; accent: string; dot: string }> = {
   LEAD_QUEUED: { n: "01", label: "Lead Queued", accent: "text-zinc-400", dot: "bg-zinc-500" },
-  OUTREACH_ACTIVE: { n: "02", label: "Outreach Active", accent: "text-sky-400", dot: "bg-sky-400" },
-  WARM_ENGAGED: { n: "03", label: "Warm Engaged", accent: "text-amber-400", dot: "bg-amber-400" },
-  REPLIED_TRIAGE: { n: "04", label: "Replied · Triage", accent: "text-emerald-400", dot: "bg-emerald-400" },
-  INTERVIEWING: { n: "05", label: "Interviewing", accent: "text-emerald-300", dot: "bg-emerald-300" },
-  OFFER_STAGE: { n: "06", label: "Offer & Closing", accent: "text-emerald-200", dot: "bg-emerald-200" },
-  NURTURE_LATER: { n: "07", label: "Nurture / Future", accent: "text-violet-300", dot: "bg-violet-300" },
-  CLOSED_ARCHIVE: { n: "08", label: "Closed / Archive", accent: "text-rose-400", dot: "bg-rose-400" },
+  OUTREACH_ACTIVE: { n: "02", label: "Outreach Active", accent: "text-sky-700", dot: "bg-sky-400" },
+  WARM_ENGAGED: { n: "03", label: "Warm Engaged", accent: "text-amber-700", dot: "bg-amber-400" },
+  REPLIED_TRIAGE: { n: "04", label: "Replied · Triage", accent: "text-emerald-700", dot: "bg-emerald-400" },
+  INTERVIEWING: { n: "05", label: "Interviewing", accent: "text-emerald-700", dot: "bg-emerald-300" },
+  OFFER_STAGE: { n: "06", label: "Offer & Closing", accent: "text-emerald-700", dot: "bg-emerald-200" },
+  NURTURE_LATER: { n: "07", label: "Nurture / Future", accent: "text-violet-700", dot: "bg-violet-300" },
+  CLOSED_ARCHIVE: { n: "08", label: "Closed / Archive", accent: "text-rose-700", dot: "bg-rose-400" },
 };
 
 export const TRACK_LABEL: Record<RoleTrack, string> = {

@@ -191,6 +191,8 @@ export class Sim {
   async importLead(input: LeadInput = defaultLead()): Promise<ImportResponse> {
     const res = await importPOST(new Request(`${APP}/api/leads/import`, { method: "POST", body: JSON.stringify({ rows: [input] }) }));
     const body = (await res.json()) as ImportResponse;
+    // Existing journey scenarios begin after the independent precheck stage completes.
+    await (await import('@/lib/server/email-check')).processEmailChecks(1000);
     const r = body.results[0];
     this.note(
       r.status === "NEW"

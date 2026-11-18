@@ -94,23 +94,23 @@ function describe(ev: TrackingEvent, logs: EmailLog[]): { icon: React.ReactNode;
         icon: <MousePointerClick className="h-3 w-3" />,
         text: (
           <>
-            Clicked <span className="font-mono text-amber-200">{String(m.path ?? m.url ?? "link")}</span>
+            Clicked <span className="font-mono text-amber-700">{String(m.path ?? m.url ?? "link")}</span>
             {t}
             {bot}
           </>
         ),
-        tone: bot ? "text-dim" : "text-amber-300",
+        tone: bot ? "text-dim" : "text-amber-700",
       };
     case "PORTFOLIO_VIEW":
       return {
         icon: <Globe className="h-3 w-3" />,
         text: (
           <>
-            Viewed <span className="font-mono text-amber-200">{String(m.path ?? "/")}</span>
+            Viewed <span className="font-mono text-amber-700">{String(m.path ?? "/")}</span>
             {m.durationSec ? <> for {Number(m.durationSec)}s</> : null}
           </>
         ),
-        tone: "text-amber-300",
+        tone: "text-amber-700",
       };
     case "REPLY_RECEIVED":
       return {
@@ -121,7 +121,7 @@ function describe(ev: TrackingEvent, logs: EmailLog[]): { icon: React.ReactNode;
             <div className="mt-1 text-muted italic">“{String(m.snippet ?? "")}”</div>
           </>
         ),
-        tone: "text-emerald-300",
+        tone: "text-emerald-700",
       };
     default:
       return {
@@ -216,8 +216,8 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
           <div className="p-6 text-sm text-dim">{error ?? "Loading dossier…"}</div>
         ) : (
           <>
-            {lead.deleted_at && <div className="border-b border-line bg-amber-500/10 p-4 text-sm text-amber-200">In Trash. Sending is stopped. <Link className="underline" href="/leads">Restore from Leads → Trash</Link></div>}
-            <div className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-2"><Link className="mr-auto text-sm text-sky-300" href={embedded ? "/leads" : `/leads/${leadId}`}>{embedded ? "← All leads" : "Open full details ↗"}</Link><Button variant="danger" size="sm" disabled={!!lead.deleted_at} onClick={remove}>Move to Trash</Button></div>
+            {lead.deleted_at && <div className="border-b border-line bg-amber-500/10 p-4 text-sm text-amber-700">In Trash. Sending is stopped. <Link className="underline" href="/leads">Restore from Leads → Trash</Link></div>}
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-2"><Link className="mr-auto text-sm text-sky-700" href={embedded ? "/leads" : `/leads/${leadId}`}>{embedded ? "← All leads" : "Open full details ↗"}</Link><Button variant="danger" size="sm" disabled={!!lead.deleted_at} onClick={remove}>Move to Trash</Button></div>
             {/* header */}
             <div className="border-b border-line px-6 py-4">
               <div className="flex items-start justify-between gap-4">
@@ -267,7 +267,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                 ].map(([k, v, hot]) => (
                   <div key={String(k)} className="bg-card px-3 py-2">
                     <div className="text-[9px] tracking-widest text-dim">{k}</div>
-                    <div className={cn("text-base tabular", hot ? "text-amber-300" : "text-fg")}>{v}</div>
+                    <div className={cn("text-base tabular", hot ? "text-amber-700" : "text-fg")}>{v}</div>
                   </div>
                 ))}
               </div>
@@ -320,6 +320,13 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                   )}
                 </div>
 
+                <div className="col-span-2 rounded-md border border-line bg-card p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2"><strong>Email precheck · {lead.email_check_status || 'PENDING'}</strong><Link href="/prechecks" className="underline">Manage checks</Link></div>
+                  <p className="mt-1 text-muted">{lead.email_check_reason || 'Awaiting free built-in checks before sending.'}</p>
+                  {lead.email_check_warnings?.map(w => <p className="mt-1 text-muted" key={w}>{w}</p>)}
+                  <p className="mt-1 text-dim">Mailbox existence is unverified. Last check {relTime(lead.email_checked_at)}.</p>
+                  {lead.current_touch === 0 && <div className="mt-3"><Label>Correct email address</Label><Input key={lead.email} aria-label="Correct email address" type="email" defaultValue={lead.email} onBlur={e => { if (e.target.value.trim().toLowerCase() !== lead.email) patch({ email: e.target.value }, 'Email updated; precheck reset'); }} /></div>}
+                </div>
                 <div className="col-span-2 rounded-md border border-line bg-card p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs">
@@ -367,13 +374,13 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                 {lead.reply_snippet && (
                   <div className="col-span-2 rounded-md border border-emerald-500/25 bg-emerald-500/5 p-3">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs font-medium text-emerald-300">
+                      <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
                         <MessageSquareReply className="h-3.5 w-3.5" /> Reply {relTime(lead.replied_at)}
                         {lead.reply_sentiment && <Badge tone="emerald">{lead.reply_sentiment}</Badge>}
                       </div>
                     </div>
                     {typeof lastReply?.metadata.summary === "string" && lastReply.metadata.analysedBy === "ai" && (
-                      <p className="mt-2 text-xs text-emerald-200">
+                      <p className="mt-2 text-xs text-emerald-700">
                         🧠 {String(lastReply.metadata.intent ?? "").replace(/_/g, " ").toLowerCase()} — {lastReply.metadata.summary}
                       </p>
                     )}
@@ -393,7 +400,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                       </details>
                     )}
                     {typeof lastReply?.metadata.autoResumeAt === "string" && lead.sequence_active && (
-                      <p className="mt-2 text-xs text-amber-200">🌴 Out of office — sequence resumes automatically {fmt(lastReply.metadata.autoResumeAt)}.</p>
+                      <p className="mt-2 text-xs text-amber-700">🌴 Out of office — sequence resumes automatically {fmt(lastReply.metadata.autoResumeAt)}.</p>
                     )}
                     {replyLinkId && (
                       <div className="mt-2">
@@ -422,7 +429,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                 )}
               </section>
 
-              {data?.deliveryFailure && <div className="mx-6 my-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><strong>Delivery problem</strong><p className="mt-1 whitespace-pre-wrap">{diagnosis ?? data?.deliveryFailure}</p>{lead.sub_stage === "BOUNCED" && <Button size="sm" className="mt-2" loading={diagnosing} onClick={async () => { setDiagnosing(true); try { const result = await api<{ reason: string }>(`/api/leads/${leadId}/delivery`); setDiagnosis(result.reason); } catch (e) { toast((e as Error).message, "err"); } finally { setDiagnosing(false); } }}>Read full delivery notice</Button>}</div>}
+              {data?.deliveryFailure && <div className="mx-6 my-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700"><strong>Delivery problem</strong><p className="mt-1 whitespace-pre-wrap">{diagnosis ?? data?.deliveryFailure}</p>{lead.sub_stage === "BOUNCED" && <Button size="sm" className="mt-2" loading={diagnosing} onClick={async () => { setDiagnosing(true); try { const result = await api<{ reason: string }>(`/api/leads/${leadId}/delivery`); setDiagnosis(result.reason); } catch (e) { toast((e as Error).message, "err"); } finally { setDiagnosing(false); } }}>Read full delivery notice</Button>}</div>}
               {/* tabs */}
               <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-bg px-6 pt-2">
                 {(
@@ -485,7 +492,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                             {m.status === "QUEUED_FOR_APPROVAL" ? "DRAFT" : m.status}
                           </Badge>
                         </header>
-                        {m.error && <div className="border-b border-line px-3 py-2 font-mono text-[11px] text-rose-300">{m.error}</div>}
+                        {m.error && <div className="border-b border-line px-3 py-2 font-mono text-[11px] text-rose-700">{m.error}</div>}
                         {m.status === "QUEUED_FOR_APPROVAL" ? (
                           <pre className="px-3 py-3 font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-muted">{m.body_html}</pre>
                         ) : m.body_html ? (

@@ -81,6 +81,11 @@ export interface SequenceTemplate {
 }
 
 export interface Lead {
+  email_check_status?: import('./email-check').EmailCheckStatus;
+  email_check_reason?: string | null;
+  email_check_warnings?: string[];
+  email_checked_at?: string | null;
+  email_check_next_at?: string;
   deleted_at?: string | null;
   last_reply_checked_at?: string | null;
   is_test?: boolean;

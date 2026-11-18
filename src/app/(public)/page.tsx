@@ -26,26 +26,27 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <div className="home-surface flex min-h-screen flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-300/30 bg-emerald-300/10 text-emerald-300">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-700 text-white">
             <Activity className="h-4 w-4" />
           </div>
           <span className="text-sm font-semibold tracking-tight">{BRAND.name}</span>
         </div>
-        <span className="font-mono text-[11px] tracking-wider text-emerald-300 uppercase">Private workspace</span>
+        <span className="text-xs text-muted">Your personal outreach workspace</span>
       </header>
 
       <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 py-10 lg:grid-cols-[1.25fr_1fr]">
         <section>
-          <p className="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Outreach CRM</p>
-          <h1 className="mt-3 max-w-2xl text-4xl leading-tight font-semibold tracking-tight md:text-6xl">Run your <span className="text-emerald-300">job search</span> like a revenue pipeline.</h1>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-muted">Personal outreach and timely follow-ups, with every reply in one place.</p>
-          <div aria-label="From first contact to interview" className="my-8 flex flex-wrap items-center gap-2 text-xs">
-            {[['Queued', 'border-sky-400/30 bg-sky-400/10 text-sky-200'], ['Engaged', 'border-amber-400/30 bg-amber-400/10 text-amber-200'], ['Replied', 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'], ['Interview', 'border-violet-400/30 bg-violet-400/10 text-violet-200']].map(([label, color], index) => <div className="flex items-center gap-2" key={label}>{index > 0 && <span aria-hidden className="text-muted">→</span>}<span className={`rounded-full border px-3 py-2 ${color}`}>{label}</span></div>)}
+          <p className="text-xs font-medium tracking-[0.15em] text-blue-700 uppercase">Make the next connection</p>
+          <h1 className="mt-4 max-w-xl text-4xl leading-[1.1] font-semibold tracking-tight md:text-6xl">Good conversations.<br /><span className="text-muted">Better opportunities.</span></h1>
+          <p className="mt-5 max-w-md text-base leading-relaxed text-muted">A focused home for your job search. Reach out personally, follow up thoughtfully, and keep every conversation moving.</p>
+          <div aria-label="Outreach workflow preview" className="my-8 max-w-lg rounded-xl border border-line bg-card p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between text-xs"><span className="font-medium">A clear next step, every time</span><span className="text-dim">Your workflow</span></div>
+            <div className="flex items-center justify-between gap-1 text-xs">{['Import', 'Precheck', 'Outreach', 'Conversation'].map((label, index) => <div key={label} className="flex flex-1 items-center gap-1"><div className="flex flex-col gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] ${index === 2 ? 'bg-blue-700 text-white' : 'border border-line bg-bg text-muted'}`}>{index + 1}</span><span className={index === 2 ? 'font-medium text-blue-700' : 'text-muted'}>{label}</span></div>{index < 3 && <span className="mb-5 h-px flex-1 bg-line" />}</div>)}</div>
           </div>
           <ul className="mt-8 grid gap-x-6 gap-y-4 sm:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, text }) => (
               <li key={title} className="flex gap-3">
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" aria-hidden />
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
                 <div>
                   <div className="text-sm font-medium">{title}</div>
                   <div className="mt-0.5 text-sm leading-relaxed text-dim">{text}</div>
@@ -55,7 +56,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </ul>
         </section>
 
-        <section className="rounded-2xl border border-emerald-200/15 bg-card/90 p-7 shadow-2xl shadow-emerald-950/30">
+        <section className="rounded-2xl border border-line bg-card p-7 shadow-sm lg:ml-8">
           <h2 className="text-lg font-semibold tracking-tight">Sign in</h2>
           <p className="mt-1 mb-6 text-sm text-dim">{BRAND.owner ? `Private workspace of ${BRAND.owner}.` : "Private workspace."}</p>
           <SignInForm next={next} configured={configured} />

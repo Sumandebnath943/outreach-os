@@ -146,6 +146,7 @@ export const POST = route(async (req: Request) => {
           if (!group.length) continue;
           updated += (must(await db().from("leads").update({ approval_status: "APPROVED" }).in("id", group)
             .is("deleted_at", null).eq("sequence_active", true).eq("approval_status", "PENDING").eq("current_touch", touch)
+            .eq('email_check_status', 'PASSED')
             .in("funnel_stage", SENDABLE_STAGES).select("id"), "approve reviewed touch") as { id: string }[]).length;
         }
         continue;

@@ -46,6 +46,7 @@ function defaults(table: string): Row {
     case "leads":
       return {
         id: randomUUID(), deleted_at: null, last_reply_checked_at: null, is_test: false, import_batch_id: null,
+        email_check_status: 'PENDING', email_check_reason: null, email_check_warnings: [], email_checked_at: null, email_check_next_at: now,
         first_name: "Team",
         last_name: null,
         job_title: null,
@@ -414,7 +415,10 @@ class FakeQuery implements PromiseLike<PgResult> {
       case "update": {
         const matched = t.filter(this.match);
         const patch = clone(this.payload as Row);
-        const nexts = matched.map((r) => ({ ...r, ...patch, ...(HAS_UPDATED_AT.has(this.table) ? { updated_at: nowIso() } : {}) }));
+        const nexts: Row[] = matched.map((r) => ({ ...r, ...patch, ...(HAS_UPDATED_AT.has(this.table) ? { updated_at: nowIso() } : {}) }));
+        if (this.table === 'leads') nexts.forEach((next, i) => {
+          if (next.email !== matched[i].email) Object.assign(next, { email_check_status: 'PENDING', email_check_reason: null, email_check_warnings: [], email_checked_at: null, email_check_next_at: nowIso(), approval_status: 'PENDING' });
+        });
         for (let i = 0; i < matched.length; i++) {
           const err = this.db.validate(this.table, nexts[i], matched[i]);
           if (err) return this.fail(err);

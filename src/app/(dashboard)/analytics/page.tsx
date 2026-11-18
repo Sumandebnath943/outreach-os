@@ -153,7 +153,7 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {error && <div className="text-sm text-rose-300">Could not load analytics: {error}</div>}
+      {error && <div className="text-sm text-rose-700">Could not load analytics: {error}</div>}
       {loading && !data && <div className="h-40 animate-pulse rounded-lg bg-card" />}
 
       {data && t && t.sent === 0 && <Empty title="No emails sent in this period">Rates appear once the first touches go out.</Empty>}

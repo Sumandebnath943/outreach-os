@@ -137,7 +137,7 @@ export default function ImportPage() {
           dragOver && "border-zinc-400 bg-raised",
         )}
       >
-        {fileName ? <FileSpreadsheet className="h-7 w-7 text-emerald-300" /> : <Upload className="h-7 w-7 text-dim" />}
+        {fileName ? <FileSpreadsheet className="h-7 w-7 text-emerald-700" /> : <Upload className="h-7 w-7 text-dim" />}
         <div className="mt-3 text-sm">{fileName ? `${fileName} · ${rawRows.length} rows` : "Drop a CSV here or click to browse"}</div>
         <div className="mt-1 text-xs text-dim">Apollo, LinkedIn Sales Navigator, Clay or hand-built exports all work</div>
         <input
@@ -178,7 +178,7 @@ export default function ImportPage() {
                 </div>
               ))}
             </div>
-            {!hasEmail && <div className="mt-3 text-xs text-rose-300">Map a column to “email” to continue.</div>}
+            {!hasEmail && <div className="mt-3 text-xs text-rose-700">Map a column to “email” to continue.</div>}
 
             <div className="mt-5 border-t border-line pt-4">
               <div className="mb-3 text-sm font-medium">Bulk overrides</div>
@@ -246,7 +246,7 @@ export default function ImportPage() {
                             </Badge>
                           )}
                         </td>
-                        <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.email : r.status === "INVALID" ? <span className="text-rose-300">{r.error}</span> : r.email}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.email : r.status === "INVALID" ? <span className="text-rose-700">{r.error}</span> : r.email}</td>
                         <td className="px-3 py-1.5 text-muted">{r.status === "NEW" ? `${r.lead.first_name} ${r.lead.last_name ?? ""}` : src.first_name ?? src.full_name ?? ""}</td>
                         <td className="px-3 py-1.5 text-muted">{r.status === "INVALID" && preview?.dryRun ? <input aria-label={`Company for row ${r.row}`} className="rounded border border-line bg-bg p-1" defaultValue={src.company_name ?? ""} onBlur={e => { const h = headers.find(h => mapping[h] === "company_name"); if (h) setRawRows(rs => rs.map((v, idx) => idx === r.row - 1 ? { ...v, [h]: e.target.value } : v)); else toast("Map a Company column first", "info"); }} /> : r.status === "NEW" ? r.lead.company_name : src.company_name ?? ""}</td>
                         <td className="px-3 py-1.5 font-mono">{r.status === "NEW" ? r.lead.geo_region : ""}</td>
@@ -266,9 +266,9 @@ export default function ImportPage() {
         <Button onClick={() => { const rows = preview.results.filter(r => r.status !== "NEW").map(r => ({ ...mappedRows[r.row - 1], row: r.row, reason: r.status === "INVALID" ? r.error : r.status })); const url = URL.createObjectURL(new Blob([Papa.unparse(rows, { escapeFormulae: true })], { type: "text/csv" })); const a = document.createElement("a"); a.href = url; a.download = "import-exceptions.csv"; a.click(); URL.revokeObjectURL(url); }}>Download excluded rows</Button>
         <span>{mappedRows.filter(r => !r.target_role_opening).length} without a target role · {mappedRows.filter(r => !r.custom_icebreaker).length} without an icebreaker · {mappedRows.filter(r => !r.geo_region).length} defaulted regions. Mailbox existence is not checked.</span>
       </div>}
-      <section className="mt-8"><h2 className="mb-3 text-lg font-medium">Import history</h2><p className="mb-3 text-xs text-muted">Reports begin with imports made in this version. Earlier contacts remain available in Leads.</p><div className="space-y-2">{(historyPoll.data?.batches ?? history?.batches ?? []).map(b => <div key={b.id} className="flex flex-wrap items-center gap-3 rounded border border-line p-3 text-sm"><Link className="text-sky-300" href={`/leads?batch=${b.id}`}>{b.name}</Link><span className="text-xs text-muted">{b.status} · {b.summary.total} rows · {b.summary.inserted ?? 0} imported · {new Date(b.created_at).toLocaleString()}</span><a className="ml-auto text-xs underline" href={`/api/imports?id=${b.id}`}>Excluded rows</a></div>)}</div><div className="mt-3 flex gap-2"><Button size="sm" disabled={historyPage === 1} onClick={() => setHistoryPage(p => p - 1)}>Previous imports</Button><Button size="sm" disabled={historyPage * 25 >= (historyPoll.data?.total ?? history?.total ?? 0)} onClick={() => setHistoryPage(p => p + 1)}>Next imports</Button></div></section>
+      <section className="mt-8"><h2 className="mb-3 text-lg font-medium">Import history</h2><p className="mb-3 text-xs text-muted">Reports begin with imports made in this version. Earlier contacts remain available in Leads.</p><div className="space-y-2">{(historyPoll.data?.batches ?? history?.batches ?? []).map(b => <div key={b.id} className="flex flex-wrap items-center gap-3 rounded border border-line p-3 text-sm"><Link className="text-sky-700" href={`/leads?batch=${b.id}`}>{b.name}</Link><span className="text-xs text-muted">{b.status} · {b.summary.total} rows · {b.summary.inserted ?? 0} imported · {new Date(b.created_at).toLocaleString()}</span><a className="ml-auto text-xs underline" href={`/api/imports?id=${b.id}`}>Excluded rows</a></div>)}</div><div className="mt-3 flex gap-2"><Button size="sm" disabled={historyPage === 1} onClick={() => setHistoryPage(p => p - 1)}>Previous imports</Button><Button size="sm" disabled={historyPage * 25 >= (historyPoll.data?.total ?? history?.total ?? 0)} onClick={() => setHistoryPage(p => p + 1)}>Next imports</Button></div></section>
       {preview && !preview.dryRun && (
-        <div className="mt-4 text-sm text-emerald-300">
+        <div className="mt-4 text-sm text-emerald-700">
           Done — {preview.summary.inserted} lead(s) queued.{" "}
           <Link href="/approvals" className="underline">
             Review in the Approval Queue →

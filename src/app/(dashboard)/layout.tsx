@@ -6,7 +6,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <>
       <TopBar />
-      <main>{children}</main>
+      <main className="lg:pl-52">{children}</main>
       <Toaster />
     </>
   );

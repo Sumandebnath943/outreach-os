@@ -29,6 +29,7 @@ export const GET = route(async () => {
         .lt("current_touch", 4)
         .in("funnel_stage", SENDABLE_STAGES)
         .eq("approval_status", "PENDING")
+        .eq('email_check_status', 'PASSED')
         .lte("next_touch_due_at", horizon),
     ),
     countSentSince(startOfTodayIn(env.ownerTimezone()).toISOString()),

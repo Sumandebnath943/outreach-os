@@ -43,7 +43,7 @@ export function LeadCard({ lead, onOpen, dragging }: { lead: Lead; onOpen: () =>
         </div>
         {warm && lead.sequence_active && (
           <span className="pulse-warm mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/10" title="High intent">
-            <Flame className="h-3 w-3 text-amber-300" />
+            <Flame className="h-3 w-3 text-amber-700" />
           </span>
         )}
       </div>
@@ -75,11 +75,11 @@ export function LeadCard({ lead, onOpen, dragging }: { lead: Lead; onOpen: () =>
             <Eye className="h-3 w-3" />
             {lead.open_count}
           </span>
-          <span className={cn("flex items-center gap-1", lead.click_count > 0 && "text-amber-300")} title="Clicks">
+          <span className={cn("flex items-center gap-1", lead.click_count > 0 && "text-amber-700")} title="Clicks">
             <MousePointerClick className="h-3 w-3" />
             {lead.click_count}
           </span>
-          <span className={cn("flex items-center gap-1", pages > 0 && "text-amber-300")} title="Portfolio pages viewed">
+          <span className={cn("flex items-center gap-1", pages > 0 && "text-amber-700")} title="Portfolio pages viewed">
             <Globe className="h-3 w-3" />
             {pages}
           </span>

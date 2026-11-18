@@ -8,6 +8,7 @@ import { resumeDueAt, resumeStageFor, stageSideEffects, waitFor } from "@/lib/fu
 import { cleanMultiline, FIELD_LIMITS, normalizeLead, sanitizeUrl } from "@/lib/ingest";
 import { FUNNEL_STAGES, GEO_REGIONS, ROLE_TRACKS, type FunnelStage, type Lead } from "@/lib/types";
 import { UUID_RE } from "@/lib/utils";
+import { addressProblem } from '@/lib/email-check';
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -71,6 +72,15 @@ export const PATCH = route(async (req: Request) => {
   if (current.deleted_at) return fail("This lead is in Trash. Restore it from Leads first.", 409);
 
   const patch: Partial<Lead> = {};
+  if ('email' in body) {
+    if (current.current_touch > 0) return fail('The address cannot change after outreach starts; create a new lead to preserve message history', 409);
+    const email = String(body.email || '').trim().toLowerCase();
+    const problem = addressProblem(email);
+    if (problem) return fail(problem);
+    const blocked = await suppression(email);
+    if (blocked) return fail(`This address is blocked: ${blocked}`, 409);
+    patch.email = email;
+  }
   const set = (k: keyof Lead, v: unknown) => ((patch as Record<string, unknown>)[k] = v);
   for (const [k, max] of Object.entries(TEXT_FIELDS) as [keyof Lead, number][]) {
     if (!(k in body)) continue;

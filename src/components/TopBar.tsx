@@ -21,6 +21,7 @@ import { Button, Metric, toast } from "./ui";
 const NAV = [
   { href: "/pipeline", label: "Pipeline" },
   { href: "/leads", label: "Leads" },
+  { href: "/prechecks", label: "Prechecks" },
   { href: "/approvals", label: "Approvals" },
   { href: "/analytics", label: "Analytics" },
   { href: "/import", label: "Import" },
@@ -76,15 +77,22 @@ export function TopBar() {
   const quotaPct = s ? Math.min(100, (s.sentToday / Math.max(1, s.dailyLimit)) * 100) : 0;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
+    <>
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-52 flex-col border-r border-line bg-[#f0f2f6] px-3 py-5 lg:flex">
+      <Link href="/pipeline" className="mb-8 flex items-center gap-2 px-3 text-sm font-semibold"><span className="rounded-md bg-blue-700 p-1.5 text-white"><Activity className="h-4 w-4" /></span>OutreachOS</Link>
+      <div className="mb-2 px-3 text-[10px] font-semibold tracking-wider text-dim uppercase">Workspace</div>
+      <nav aria-label="Main navigation" className="space-y-1">{NAV.map(n => <Link key={n.href} href={n.href} aria-current={pathname.startsWith(n.href) ? 'page' : undefined} className={cn('flex items-center justify-between rounded-md px-3 py-2 text-[13px] transition-colors', pathname.startsWith(n.href) ? 'bg-white font-medium text-blue-700 shadow-sm ring-1 ring-line' : 'text-muted hover:bg-white/70 hover:text-fg')}>{n.label}{n.href === '/approvals' && !!s?.pendingApprovals && <span className="text-xs tabular">{s.pendingApprovals}</span>}</Link>)}</nav>
+      <div className="mt-auto border-t border-line px-3 pt-4 text-xs text-muted"><div className="mb-1 flex items-center gap-2"><span className={cn('h-1.5 w-1.5 rounded-full', s?.gmailConnected ? 'bg-emerald-600' : 'bg-rose-600')} />{s?.gmailConnected ? 'Gmail connected' : 'Gmail disconnected'}</div>Worker {relTime(s?.lastQueueRunAt)}</div>
+    </aside>
+    <header className="sticky top-0 z-30 border-b border-line bg-card/95 backdrop-blur lg:ml-52">
       <div className="flex min-h-12 flex-wrap items-center gap-3 py-2 border-b border-line px-5 lg:gap-6">
-        <Link href="/pipeline" className="flex items-center gap-2">
+        <Link href="/pipeline" className="flex items-center gap-2 lg:hidden">
           <div className="flex h-6 w-6 items-center justify-center rounded border border-line bg-card">
             <Activity className="h-3.5 w-3.5" />
           </div>
           <span className="text-sm font-semibold tracking-tight">OutreachOS</span>
         </Link>
-        <nav className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto">
+        <nav aria-label="Mobile navigation" className="lg:hidden flex min-w-0 max-w-full items-center gap-1 overflow-x-auto">
           {NAV.map((n) => {
             const active = pathname.startsWith(n.href);
             return (
@@ -98,13 +106,14 @@ export function TopBar() {
               >
                 {n.label}
                 {n.href === "/approvals" && s && s.pendingApprovals > 0 && (
-                  <span className="ml-1.5 rounded bg-amber-400/15 px-1 font-mono text-[10px] text-amber-300">{s.pendingApprovals}</span>
+                  <span className="ml-1.5 rounded bg-amber-400/15 px-1 font-mono text-[10px] text-amber-700">{s.pendingApprovals}</span>
                 )}
               </Link>
             );
           })}
         </nav>
-        <div className="ml-auto flex items-center gap-3">
+        <span className="hidden text-sm text-muted lg:block">Workspace <span className="mx-2 text-line-strong">/</span><span className="font-medium text-fg">{NAV.find(n => pathname.startsWith(n.href))?.label || "Lead details"}</span></span>
+        <div className="ml-auto flex w-full flex-wrap items-center justify-between gap-1 sm:w-auto sm:justify-start sm:gap-2">
           <span className="hidden items-center gap-1.5 font-mono text-[11px] text-dim lg:flex" title="Send provider">
             <span className={cn("h-1.5 w-1.5 rounded-full", s?.gmailConnected ? "bg-emerald-400" : "bg-rose-400")} />
             {s?.sendProvider ?? "—"} {s?.sendProvider === "GMAIL" && !s.gmailConnected ? "· disconnected" : ""}
@@ -116,11 +125,11 @@ export function TopBar() {
                 disabled={switching}
                 onClick={() => setMode(m)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-2.5 py-1 font-mono text-[11px] tracking-wide whitespace-nowrap transition-colors",
+                  "flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[11px] tracking-wide whitespace-nowrap transition-colors",
                   s?.executionMode === m
                     ? m === "AUTO_PILOT"
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-amber-500/15 text-amber-300"
+                      ? "bg-raised text-fg"
+                      : "bg-raised text-fg"
                     : "text-dim hover:text-fg",
                 )}
               >
@@ -129,7 +138,7 @@ export function TopBar() {
               </button>
             ))}
           </div>
-          <Button size="sm" variant="primary" onClick={runQueue} loading={running} className="whitespace-nowrap">
+          <Button size="sm" variant="outline" onClick={runQueue} loading={running} className="whitespace-nowrap">
             {!running && <RefreshCw className="h-3.5 w-3.5" />}
             <span className="hidden lg:inline">Sync Replies &amp; Run Queue</span>
             <span className="lg:hidden">Run Queue</span>
@@ -144,18 +153,18 @@ export function TopBar() {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-x-6 gap-y-2 px-5 py-2.5 md:grid-cols-6">
+      {pathname === "/pipeline" && <div className="grid grid-cols-3 gap-x-6 gap-y-2 px-5 py-2.5 md:grid-cols-6">
         <Metric label="Total Leads" value={s?.total ?? "—"} />
-        <Metric label="Active in Sequence" value={s?.activeInSequence ?? "—"} tone="text-sky-300" />
-        <Metric label="Warm · High Intent" value={s?.warm ?? "—"} tone="text-amber-300" />
-        <Metric label="Replies · Triage" value={s?.triage ?? "—"} tone="text-emerald-300" />
-        <Metric label="Active Interviews" value={s?.interviewing ?? "—"} tone="text-emerald-200" />
+        <Metric label="Active in Sequence" value={s?.activeInSequence ?? "—"} />
+        <Metric label="Warm · High Intent" value={s?.warm ?? "—"} />
+        <Metric label="Replies · Triage" value={s?.triage ?? "—"} />
+        <Metric label="Active Interviews" value={s?.interviewing ?? "—"} />
         <div className="min-w-0">
           <Metric
             label="Today's Quota"
             value={s ? s.sentToday : "—"}
             sub={s ? `/ ${s.dailyLimit}` : undefined}
-            tone={s && s.sentToday >= s.dailyLimit ? "text-rose-300" : undefined}
+            tone={s && s.sentToday >= s.dailyLimit ? "text-rose-700" : undefined}
           />
           <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-line">
             <div className={cn("h-full", quotaPct >= 100 ? "bg-rose-400" : "bg-fg")} style={{ width: `${quotaPct}%` }} />
@@ -167,7 +176,8 @@ export function TopBar() {
           {s?.quotaBreakdown && <span>{s.quotaBreakdown.outreach} outreach + {s.quotaBreakdown.test} test sends · {s.quotaBreakdown.bounced} of these bounced</span>}
           <span className="md:ml-auto">Worker {relTime(s?.lastQueueRunAt)} · next slot {s?.nextDispatchAt && new Date(s.nextDispatchAt) > new Date() ? relTime(s.nextDispatchAt) : "open"}</span>
         </div>
-      </div>
+      </div>}
     </header>
+    </>
   );
 }

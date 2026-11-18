@@ -4,6 +4,7 @@ import type { gmail_v1 } from "@googleapis/gmail";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { countSentSince, db, getSettings, logEvent, must, updateLead } from "./db";
 import { suppression } from "./lead-query";
+import { checkLeadEmail, processEmailChecks } from './email-check';
 import { env } from "./env";
 import { checkInbound, gmailClient, isGmailAuthError, sendViaGmail, type ReplyCheck } from "./gmail";
 import { analyzeReply } from "./groq";
@@ -247,6 +248,8 @@ export async function applyInbound(lead: Lead, result: ReplyCheck, mailbox?: str
     },
     "bounce_detected",
   );
+  must(await db().from('suppressed_addresses').upsert({ email: lead.email.toLowerCase(), reason: (result.reason || result.snippet).slice(0, 2000) }, { onConflict: 'email' }).select('email'), 'suppress bounced address');
+  await db().from('leads').update({ email_check_status: 'BLOCKED', email_check_reason: (result.reason || result.snippet).slice(0, 2000) }).eq('id', lead.id);
   const last = await db()
     .from("email_logs")
     .select("id")
@@ -348,8 +351,13 @@ export async function dispatchTouch(
   gmail: gmail_v1.Gmail | null,
 ): Promise<EmailLog> {
   if (lead.deleted_at || await suppression(lead.email)) throw new SendError("Lead is deleted or address is blocked", "HARD_BOUNCE");
-  const current = must(await db().from("leads").select("deleted_at, sequence_active, approval_status, current_touch").eq("id", lead.id).maybeSingle(), "verify current lead") as Lead | null;
-  if (!current || current.deleted_at || !current.sequence_active || current.approval_status === "PAUSED" || current.current_touch !== lead.current_touch) throw new Error("Lead changed before sending; dispatch cancelled");
+  const current = must(await db().from("leads").select("*").eq("id", lead.id).maybeSingle(), "verify current lead") as Lead | null;
+  if (!current || current.deleted_at || !current.sequence_active || current.approval_status === "PAUSED" || current.current_touch !== lead.current_touch || current.email !== lead.email) throw new Error("Lead changed before sending; dispatch cancelled");
+  if (current.email_check_status !== 'PASSED' || !current.email_check_next_at || Date.parse(current.email_check_next_at) <= Date.now()) {
+    const checked = await checkLeadEmail(current);
+    if (checked.status !== 'PASSED') throw new Error(`Email precheck held sending: ${checked.reason}`);
+  }
+  if (settings.execution_mode === 'APPROVAL_GATE' && current.approval_status !== 'APPROVED') throw new Error('Approval was revoked before sending');
   const draft = await composeNextTouch(lead, templates, undefined, settings.email_signature);
   const { touch, variant, template } = draft;
 
@@ -509,6 +517,9 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
     notes: [],
   };
 
+  const checkedEmails = await processEmailChecks();
+  if (checkedEmails) report.notes.push(`Email prechecks completed: ${checkedEmails}. Only passed addresses can send.`);
+
   // 0 ─ Morning digest (once per day, after DIGEST_TIME in the owner's timezone).
   try {
     if (await maybeSendDigest(settings)) report.notes.push("Daily digest sent to Telegram.");
@@ -629,6 +640,7 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
     .in("geo_region", [...openRegions])
     .eq("sequence_active", true)
     .lt("current_touch", 4)
+    .eq('email_check_status', 'PASSED')
     .in("funnel_stage", SENDABLE_STAGES)
     .lte("next_touch_due_at", new Date().toISOString())
     .order("next_touch_due_at", { ascending: true }).order("id")
@@ -715,6 +727,8 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
         error: message.slice(0, 2000),
       });
       if (e instanceof SendError && e.kind === "HARD_BOUNCE") {
+        must(await db().from('suppressed_addresses').upsert({ email: lead.email.toLowerCase(), reason: message.slice(0, 2000) }, { onConflict: 'email' }).select('email'), 'suppress rejected address');
+        await db().from('leads').update({ email_check_status: 'BLOCKED', email_check_reason: message.slice(0, 2000) }).eq('id', lead.id);
         await updateLead(
           lead,
           {

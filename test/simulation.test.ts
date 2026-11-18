@@ -41,6 +41,13 @@ vi.mock("@googleapis/gmail", async () => {
   return { auth: { OAuth2 }, gmail: () => state.gmail.client() };
 });
 
+// DNS is isolated; simulations exercise the real precheck stage against deterministic routing.
+vi.mock('node:dns/promises', () => ({ Resolver: class {
+  async resolveMx(domain: string) { if (domain === 'dnsretry.example.com') throw Object.assign(new Error('timeout'), { code: 'ETIMEOUT' }); return [{ exchange: 'mx.fixture.invalid', priority: 10 }]; }
+  async resolve4() { return ['192.0.2.1']; }
+  async resolve6() { return []; }
+} }));
+
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   const { state } = await import("./sim/state");
@@ -832,6 +839,8 @@ describe("end-to-end pipeline simulation", () => {
     const rows = Array.from({ length: 1250 }, (_, i) => defaultLead({ email: `bulk${i}@example.com` }));
     const imported = await importPost(new Request("http://sim/api/leads/import", { method: "POST", body: JSON.stringify({ rows }) }));
     expect(imported.status).toBe(200);
+    await (await import('@/lib/server/email-check')).processEmailChecks(1000);
+    await (await import('@/lib/server/email-check')).processEmailChecks(1000);
     const first = await (await GET(new Request("http://sim/api/approvals?pageSize=25"))).json();
     const second = await (await GET(new Request("http://sim/api/approvals?page=2&pageSize=25"))).json();
     expect(first.total).toBe(1250); expect(first.items).toHaveLength(25);
@@ -896,6 +905,7 @@ describe("end-to-end pipeline simulation", () => {
     const us = alias("us-fair");
     const rows = [...Array.from({ length: 320 }, (_, i) => defaultLead({ email: `india${i}@example.com`, geo_region: "INDIA" })), defaultLead({ email: us, geo_region: "US" })];
     await POST(new Request("http://sim/api/leads/import", { method: "POST", body: JSON.stringify({ rows }) }));
+    await (await import('@/lib/server/email-check')).processEmailChecks(1000);
     await sim.cron();
     expect(sim.gmail.sentTo(us)).toHaveLength(1);
     expect(sim.db.tables.email_logs).toHaveLength(1);
@@ -956,6 +966,68 @@ describe("end-to-end pipeline simulation", () => {
     expect(result.updated).toBe(0); expect(result.skipped).toBe(1);
     expect(sim.lead().approval_status).toBe("PENDING");
     expect(sim.gmail.messages).toHaveLength(0);
+  });
+
+  it('S33 · import waits for precheck, then becomes approvable without sending', async () => {
+    const sim = new Sim('Precheck workflow', MON_0830_IST, { execution_mode: 'APPROVAL_GATE' });
+    const { POST: ingest } = await import('@/app/api/leads/import/route');
+    await ingest(new Request('http://sim/api/leads/import', { method: 'POST', body: JSON.stringify({ rows: [defaultLead()] }) }));
+    expect(sim.lead().email_check_status).toBe('PENDING');
+    const { POST: approve, GET: approvals } = await import('@/app/api/approvals/route');
+    const request = () => new Request('http://sim/api/approvals', { method: 'POST', body: JSON.stringify({ action: 'approve', leadIds: [sim.lead().id] }) });
+    expect((await (await approve(request())).json()).updated).toBe(0);
+    expect((await (await approvals(new Request('http://sim/api/approvals'))).json()).total).toBe(0);
+    const { POST: checks, GET } = await import('@/app/api/prechecks/route');
+    expect((await (await checks(new Request('http://sim/api/prechecks', { method: 'POST', body: '{}' }))).json()).checked).toBe(1);
+    expect(sim.lead().email_check_status).toBe('PASSED');
+    expect((await (await approve(request())).json()).updated).toBe(1);
+    expect((await (await GET(new Request('http://sim/api/prechecks?check=PASSED'))).json()).counts.PASSED).toBe(1);
+    expect(sim.gmail.messages).toHaveLength(0);
+  });
+
+  it('S34 · blocked domain cannot send even if manually approved; it is not a bounce', async () => {
+    const sim = new Sim('Blocked precheck', '2026-11-23T04:30:00Z');
+    const email = 'person@cannot-receive.invalid';
+    await sim.importLead(defaultLead({ email }));
+    sim.db.tables.leads[0].approval_status = 'APPROVED';
+    const report = await sim.cron();
+    expect(sim.lead(email).email_check_status).toBe('BLOCKED');
+    expect(sim.lead(email).funnel_stage).toBe('LEAD_QUEUED');
+    expect(report.bounces).toBe(0); expect(report.sent).toHaveLength(0); expect(sim.db.tables.email_logs).toHaveLength(0);
+  });
+
+  it('S35 · DNS outages schedule an hourly retry without closing or suppressing a lead', async () => {
+    const sim = new Sim('DNS retry', '2026-11-23T04:30:00Z');
+    const email = 'person@dnsretry.example.com';
+    await sim.importLead(defaultLead({ email }));
+    const checked = sim.lead(email).email_checked_at;
+    expect(sim.lead(email).email_check_status).toBe('RETRY');
+    expect(Date.parse(sim.lead(email).email_check_next_at!) - Date.now()).toBe(HOUR);
+    await sim.cron(); expect(sim.lead(email).email_checked_at).toBe(checked);
+    sim.advance(HOUR + 1); await sim.cron(); expect(sim.lead(email).email_checked_at).not.toBe(checked);
+    expect(sim.lead(email).funnel_stage).toBe('LEAD_QUEUED'); expect(sim.db.tables.suppressed_addresses).toHaveLength(0); expect(sim.gmail.messages).toHaveLength(0);
+  });
+
+  it('S36 · correcting an address revokes approval and resets its check', async () => {
+    const sim = new Sim('Correct email', MON_0830_IST);
+    await sim.importLead();
+    sim.db.tables.leads[0].approval_status = 'APPROVED';
+    const { PATCH } = await import('@/app/api/leads/route');
+    const email = alias('corrected');
+    const response = await PATCH(new Request('http://sim/api/leads', { method: 'PATCH', body: JSON.stringify({ id: sim.lead().id, email }) }));
+    expect(response.status).toBe(200);
+    expect(sim.lead(email)).toMatchObject({ email_check_status: 'PENDING', approval_status: 'PENDING', email_checked_at: null });
+    expect(sim.gmail.messages).toHaveLength(0);
+  });
+
+  it('S37 · prechecks run even when the daily sending cap is exhausted', async () => {
+    const sim = new Sim('Cap-independent checks', '2026-11-23T04:30:00Z', { daily_send_limit: 1 });
+    await sim.importLead(); await sim.cron();
+    const { POST } = await import('@/app/api/leads/import/route');
+    const email = alias('queued-check');
+    await POST(new Request('http://sim/api/leads/import', { method: 'POST', body: JSON.stringify({ rows: [defaultLead({ email })] }) }));
+    await sim.cron();
+    expect(sim.lead(email).email_check_status).toBe('PASSED'); expect(sim.sentLogs()).toHaveLength(1); expect(sim.gmail.sentTo(email)).toHaveLength(0);
   });
 
 });

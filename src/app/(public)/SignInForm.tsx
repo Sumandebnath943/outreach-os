@@ -54,19 +54,19 @@ export function SignInForm({ next, configured }: { next: string; configured: boo
         />
       </div>
       {error && (
-        <p role="alert" className="text-sm text-rose-300">
+        <p role="alert" className="text-sm text-rose-700">
           {error}
         </p>
       )}
       <button
         type="submit"
         disabled={busy || !configured}
-        className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-emerald-300 text-sm font-semibold text-slate-950 transition-colors hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-700 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockKeyhole className="h-4 w-4" />}
         Sign in
       </button>
-      {!configured && <p className="text-xs text-amber-300">Sign-in isn&apos;t configured yet: set DASHBOARD_PASSWORD on the server.</p>}
+      {!configured && <p className="text-xs text-amber-700">Sign-in isn&apos;t configured yet: set DASHBOARD_PASSWORD on the server.</p>}
     </form>
   );
 }

@@ -29,6 +29,7 @@ export function leadQuery(f: LeadFilters, columns = "*") {
 }
 export function approvalQuery(f: LeadFilters, columns = "*") {
   return leadQuery({ ...f, trash: "false" }, columns).eq("sequence_active", true).lt("current_touch", 4)
+    .eq('email_check_status', 'PASSED')
     .in("funnel_stage", SENDABLE_STAGES).lte("next_touch_due_at", new Date(Date.now() + 86_400_000).toISOString());
 }
 export function pagination(sp: URLSearchParams) {

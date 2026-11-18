@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **18 Nov 2026**, after deploying and verifying the lead-management and queue upgrade (`f0c922f`). The owner applied migration 013. GitHub CI and Vercel succeeded; read-only production checks passed.
+Last updated: **18 Nov 2026**, during the email-precheck upgrade and production end-to-end testing. The owner applied migration 014; schema verified. The owner authorized deleting all leads and testing with LIVE_LEAD_EMAIL. See docs/UPGRADE_014.md.
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: **18 Nov 2026**, after deploying and verifying the lead-management
 |---|---|
 | Repo | `github.com/Sumandebnath943/outreach-os`, branch `main` (the only branch; push to main) |
 | Production | `https://outreachos.houseofnamus.com` (Vercel, auto-deploys from `main`) |
-| Database | Supabase (free tier). Migrations **001–013 applied**, with 013 confirmed by the owner on 18 Nov 2026 |
+| Database | Supabase (free tier). Migrations **001–014 applied**, with 014 confirmed by the owner and verified by schema query on 18 Nov 2026 |
 | Scheduler | Supabase Cron (`009`): `outreachos-worker-weekdays` every 10 min Mon–Fri UTC, `outreachos-worker-weekends` hourly at weekends, `outreachos-cleanup` daily (`010`) |
 | Mode | **AUTO_PILOT**, daily cap 45, **warm-up on** (started 2026-11-18 → week 1 = 10/day, week 2 = 20, week 3 = 30, then 45) |
 | Holidays | `skip_holidays` on (US federal + India), out-of-office auto-resume on |
@@ -29,7 +29,7 @@ Last updated: **18 Nov 2026**, after deploying and verifying the lead-management
 | Connection audit | Gmail token has both required scopes; sender matches the connected account. Telegram token/chat and Groq credentials/model verified. Public home 200, signed-out pipeline redirects, protected API 401. Last worker run at audit: 19:40 IST. No worker or notification was triggered by the audit. |
 
 ### Open watch item
-- **Live test `oo` (out-of-office):** auto-resume is due **Tue 24 Nov 2026 10:00 IST** (`2026-11-24T04:30Z`). Expect Touch 2 to be sent automatically to the `+oo` address, without a manual step. Verify with `npm run live -- status`. After that, run `npm run live -- cleanup`, **with the owner's OK**, to delete all test leads.
+- The previous `oo` test and all other leads were removed at the owner's explicit request during upgrade 014. The old 24 Nov watch is cancelled; new production test results will replace it.
 
 ---
 
@@ -79,13 +79,13 @@ Last updated: **18 Nov 2026**, after deploying and verifying the lead-management
 
 | # | Item | Owner | Notes |
 |---|---|---|---|
-| P1 | Verify `oo` auto-resume on **24 Nov 10:00 IST**, then clean up test leads | agent + owner OK | `npm run live -- status`, then `npm run live -- cleanup` |
+| P1 | Complete upgrade 014 production tests and cleanup | agent | Owner explicitly authorized test sends and removal of all original/test leads. Restore original settings afterward. |
 | P2 | Complete source-data enrichment | owner | Import is complete. Four rejected contacts need company names (enriched CSV data rows 82, 94, 107, 171, excluding header). 254 imported contacts have no target opening or icebreaker; 213 use the Team greeting. Import validation does not verify mailbox existence. |
 | P3 | Optional: 5-minute cron for faster alerts | owner (SQL) | `select cron.schedule('outreachos-worker-weekdays', '*/5 * * * 1-5', 'select public.oos_call_worker()');` |
 | P4 | Extend India festival dates beyond 2027 | agent | `src/lib/holidays.ts` (`INDIA_FESTIVALS`) before Dec 2027 |
 | P5 | Watch the first real sends: deliverability, bounces, replies | agent/owner | Analytics page; Telegram |
 | P6 | Optional roadmap | — | AI icebreakers on import, A/B subjects, bounce/warm Telegram alerts, multi-user white-label |
-| P8 | Email prechecks deferred | owner | No verifier integration, DNS precheck, verification queue or new send gate was added. Existing bounce detection remains; detailed SMTP reasons are captured for future bounces. Existing bounced leads can read the full notice on demand from their details page. |
+| P8 | Reoon and external mailbox verification deferred | owner | Built-in syntax/DNS/suppression checks are implemented in upgrade 014. No external verifier is connected. |
 
 ---
 
@@ -153,4 +153,5 @@ npm install --package-lock-only
 | 2026-11-18 | (read-only audit) | Reconciled first real import (308 → 295), verified genuine SMTP 5.1.1 bounce, 9 test sends + 1 real bounce consuming today's cap, all 294 remaining real leads approved, live connections/auth and 1,180 template renders. Recorded approval API/UI limits and source-data gaps; production unchanged. |
 | 2026-11-18 | (local upgrade) | Implemented all approved fixes except deferred email prechecks. Added migration 013 and nine simulation regressions plus a full delivery-notice unit regression covering scale, Trash, suppression, import reports, regional fairness and quota. Deploy only after owner applies migration. |
 | 2026-11-18 | `f0c922f` | Owner confirmed migration 013 and authorized push. CI and Vercel succeeded; twelve read-only production page/API checks and schema checks passed. Counts: 299 leads, 294 approved, zero pending, quota 9 test + 1 outreach = 10/10. No sends, approvals or live worker runs triggered. |
+| 2026-11-18 | (upgrade 014) | Built free prechecks and a light workspace based on reviewed Linear/Attio/Carbon guidance; owner selected light direction. 150 tests and production build pass. All 299 original leads removed after private backup; suppression retained. Production E2E validation in progress. |
 | earlier | — | See `git log` |

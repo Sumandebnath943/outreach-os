@@ -18,11 +18,11 @@ export const Button = forwardRef<
         "inline-flex items-center justify-center gap-1.5 rounded-md border font-medium whitespace-nowrap transition-colors select-none",
         "disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500",
         size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
-        variant === "primary" && "border-emerald-300 bg-emerald-300 text-slate-950 hover:bg-emerald-200",
+        variant === "primary" && "border-blue-700 bg-blue-700 text-white hover:bg-blue-800",
         variant === "outline" && "border-line bg-card text-fg hover:border-line-strong hover:bg-raised",
         variant === "ghost" && "border-transparent text-muted hover:bg-raised hover:text-fg",
-        variant === "danger" && "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20",
-        variant === "success" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
+        variant === "danger" && "border-rose-500/30 bg-rose-500/10 text-rose-700 hover:bg-rose-500/20",
+        variant === "success" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20",
         className,
       )}
       {...props}
@@ -54,11 +54,11 @@ export function Badge({
       className={cn(
         "inline-flex items-center gap-1 rounded border px-1.5 py-px font-mono text-[10px] leading-4 tracking-wide",
         tone === "neutral" && "border-line text-muted",
-        tone === "emerald" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-        tone === "amber" && "border-amber-500/30 bg-amber-500/10 text-amber-300",
-        tone === "rose" && "border-rose-500/30 bg-rose-500/10 text-rose-300",
-        tone === "sky" && "border-sky-500/30 bg-sky-500/10 text-sky-300",
-        tone === "violet" && "border-violet-500/30 bg-violet-500/10 text-violet-300",
+        tone === "emerald" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
+        tone === "amber" && "border-amber-500/30 bg-amber-500/10 text-amber-700",
+        tone === "rose" && "border-rose-500/30 bg-rose-500/10 text-rose-700",
+        tone === "sky" && "border-sky-500/30 bg-sky-500/10 text-sky-700",
+        tone === "violet" && "border-violet-500/30 bg-violet-500/10 text-violet-700",
         className,
       )}
     >
@@ -176,8 +176,8 @@ export function Toaster() {
           key={t.id}
           className={cn(
             "animate-slide-in pointer-events-auto rounded-md border bg-card px-3 py-2 text-sm shadow-xl",
-            t.tone === "ok" && "border-emerald-500/30 text-emerald-200",
-            t.tone === "err" && "border-rose-500/30 text-rose-200",
+            t.tone === "ok" && "border-emerald-500/30 text-emerald-700",
+            t.tone === "err" && "border-rose-500/30 text-rose-700",
             t.tone === "info" && "border-line text-fg",
           )}
         >

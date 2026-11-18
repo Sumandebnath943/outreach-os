@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b1120;
-  --color-card: #111c2d;
-  --color-raised: #17263a;
-  --color-line: #29364a;
-  --color-line-strong: #466078;
-  --color-fg: #fafafa;
-  --color-muted: #a1a1aa;
-  --color-dim: #94a3b8;
+  --color-bg: #f7f8fa;
+  --color-card: #ffffff;
+  --color-raised: #f0f2f6;
+  --color-line: #e2e5eb;
+  --color-line-strong: #b8c0cd;
+  --color-fg: #192233;
+  --color-muted: #586477;
+  --color-dim: #69768a;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -27,13 +27,13 @@ body {
 }
 
 ::selection {
-  background: #fafafa;
+  background: #192233;
   color: #09090b;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #27272a transparent;
+  scrollbar-color: #c7cdd7 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -41,7 +41,7 @@ body {
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #c7cdd7;
   border-radius: 8px;
 }
 *::-webkit-scrollbar-track {
@@ -51,7 +51,7 @@ body {
 input,
 textarea,
 select {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .tabular {
@@ -109,7 +109,7 @@ select {
 
 /* Rendered email bodies inside the dossier */
 .email-body a {
-  color: #7dd3fc;
+  color: #3159bd;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -121,4 +121,6 @@ select {
   font-family: inherit !important;
 }
 
-.home-surface { background: radial-gradient(ellipse at 14% 30%, rgb(16 185 129 / 0.13), transparent 48%), radial-gradient(ellipse at 88% 12%, rgb(56 189 248 / 0.10), transparent 45%), var(--color-bg); }
+.home-surface { background: #f7f8fa; }
+:focus-visible { outline: 2px solid #3159bd; outline-offset: 3px; }
+input[type="checkbox"] { accent-color: #3159bd; }

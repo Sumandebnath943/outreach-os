@@ -118,7 +118,7 @@ export default function SettingsPage() {
 
   if (!data || !form)
     return (
-      <div className={cn("mx-auto max-w-5xl px-5 py-6 text-sm", error ? "text-rose-300" : "text-dim")}>
+      <div className={cn("mx-auto max-w-5xl px-5 py-6 text-sm", error ? "text-rose-700" : "text-dim")}>
         {error ? `Could not load settings: ${error}` : "Loading settings…"}
       </div>
     );
@@ -364,7 +364,7 @@ export default function SettingsPage() {
             )}
           </div>
           {!baseUrlOk && (
-            <p className="mt-3 text-xs text-amber-300">
+            <p className="mt-3 text-xs text-amber-700">
               {isLocal
                 ? "Tracking pixels and click links point at localhost — set APP_BASE_URL to your public deployment before sending."
                 : "APP_BASE_URL must start with https:// — Google rejects the Gmail sign-in redirect otherwise, and tracked links would use plain HTTP. Fix it in Vercel and redeploy."}
