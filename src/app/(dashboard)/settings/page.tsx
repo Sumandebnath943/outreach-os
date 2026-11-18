@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Link2, Send, Unplug } from "lucide-react";
+import { Activity, Bot, CalendarClock, Check, Copy, Flame, Link2, Plug, Send, Unplug, UserRound } from "lucide-react";
 import { api, broadcastRefresh, usePoll } from "@/lib/client";
 import { portfolioSnippet } from "@/lib/snippet";
 import type { SystemSettings } from "@/lib/types";
+import type { Tone } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Badge, Button, Card, Input, Label, Select, Textarea, toast } from "@/components/ui";
 
@@ -33,7 +34,7 @@ interface SettingsResponse {
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
   return (
     <label className="flex cursor-pointer items-start gap-2.5 text-sm">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 accent-zinc-100" />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4" />
       <span>
         {label}
         {hint && <span className="block text-xs text-dim">{hint}</span>}
@@ -45,12 +46,21 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
 type Form = Omit<SystemSettings, "gmail_refresh_token" | "id" | "updated_at" | "next_dispatch_at" | "last_queue_run_at" | "last_digest_on">;
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+  const sections: Record<string, { tone: Tone; icon: typeof Bot }> = {
+    'Execution & provider': { tone: 'info', icon: Bot },
+    'Recipient send windows': { tone: 'teal', icon: CalendarClock },
+    'Warm-up & holiday calendar': { tone: 'warning', icon: Flame },
+    'Sender identity & destinations': { tone: 'violet', icon: UserRound },
+    'Connections & environment': { tone: 'success', icon: Plug },
+    'Portfolio telemetry snippet': { tone: 'info', icon: Activity },
+  };
+  const { tone, icon: Icon } = sections[title] || { tone: 'info', icon: Bot };
   return (
-    <Card className="p-5">
-      <div className="mb-4">
+    <Card className="p-5" tone={tone}>
+      <div className="section-heading mb-4"><span className="tone-icon"><Icon className="h-4 w-4" /></span><div>
         <div className="text-sm font-medium">{title}</div>
         {desc && <div className="mt-0.5 text-xs text-dim">{desc}</div>}
-      </div>
+      </div></div>
       {children}
     </Card>
   );
@@ -58,12 +68,12 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 
 function StatusRow({ ok, label, detail, optional }: { ok: boolean; label: string; detail?: string; optional?: boolean }) {
   return (
-    <div className="flex items-center justify-between border-b border-line py-2 text-sm last:border-0">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line py-2 text-sm last:border-0">
       <span className="flex items-center gap-2">
-        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-400" : optional ? "bg-zinc-600" : "bg-rose-400")} />
+        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-success" : optional ? "bg-dim" : "bg-danger")} />
         {label}
       </span>
-      <span className="font-mono text-[11px] text-dim">{detail ?? (ok ? "ok" : "missing")}</span>
+      <span className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-right break-words"><Badge tone={ok ? 'success' : optional ? 'neutral' : 'danger'}>{ok ? /API|Groq|alerts/.test(label) ? 'Connected' : 'Ready' : optional ? 'Optional' : 'Needs attention'}</Badge><span className="text-[11px] text-muted">{detail}</span></span>
     </div>
   );
 }
@@ -118,7 +128,7 @@ export default function SettingsPage() {
 
   if (!data || !form)
     return (
-      <div className={cn("mx-auto max-w-5xl px-5 py-6 text-sm", error ? "text-danger" : "text-dim")}>
+      <div role={error ? "alert" : undefined} className={cn("mx-auto max-w-5xl px-5 py-6 text-sm", error ? "text-danger" : "text-dim")}>
         {error ? `Could not load settings: ${error}` : "Loading settings…"}
       </div>
     );
@@ -167,7 +177,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 px-5 py-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">System Settings</h1>
           <p className="mt-1 text-sm text-dim">Deliverability guardrails, sending identity, provider and portfolio telemetry.</p>
@@ -182,7 +192,7 @@ export default function SettingsPage() {
           <div className="grid gap-3">
             <div>
               <Label>Execution mode</Label>
-              <Select value={form.execution_mode} onChange={str("execution_mode")}>
+              <Select className="tone-chip" data-tone={form.execution_mode === "AUTO_PILOT" ? "success" : "warning"} value={form.execution_mode} onChange={str("execution_mode")}>
                 <option value="APPROVAL_GATE">APPROVAL GATE — human 1-click batch approval</option>
                 <option value="AUTO_PILOT">AUTO-PILOT — fully autonomous in business hours</option>
               </Select>
@@ -230,8 +240,8 @@ export default function SettingsPage() {
                 ["global", "GLOBAL · UTC"],
               ] as const
             ).map(([g, label]) => (
-              <div key={g} className="grid grid-cols-[1fr_80px_80px] items-end gap-2">
-                <div className="pb-2 text-sm text-muted">{label}</div>
+              <div key={g} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_80px_80px]">
+                <div className="col-span-2 pb-2 text-sm text-muted sm:col-span-1">{label}</div>
                 <div>
                   <Label>Start</Label>
                   <Input type="number" min={0} max={23} value={form[`${g}_window_start`]} onChange={num(`${g}_window_start`)} />
@@ -342,7 +352,7 @@ export default function SettingsPage() {
                 href="/api/auth/google/start"
                 className={cn(
                   "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
-                  st.gmailConnected ? "border-line bg-card text-fg hover:bg-raised" : "border-fg bg-fg text-bg hover:bg-zinc-200",
+                  st.gmailConnected ? "button-outline border-line bg-card text-fg hover:bg-raised" : "border-accent bg-accent text-accent-ink hover:bg-accent-hover",
                 )}
               >
                 <Link2 className="h-3.5 w-3.5" /> {st.gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
@@ -353,7 +363,7 @@ export default function SettingsPage() {
               </Button>
             )}
             {st.telegramConfigured && (
-              <Button size="sm" onClick={sendTestAlert} loading={testing}>
+              <Button size="sm" variant="info" onClick={sendTestAlert} loading={testing}>
                 <Send className="h-3.5 w-3.5" /> Send test alert
               </Button>
             )}
@@ -392,8 +402,8 @@ export default function SettingsPage() {
           <pre className="max-h-[420px] overflow-auto rounded-md border border-line bg-bg p-4 font-mono text-[11.5px] leading-relaxed text-muted">{snippet}</pre>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-dim">
-          <Badge>POST {st.appBaseUrl}/api/track/portfolio</Badge>
-          <Badge>{"{ ref, path, type: view|leave, durationSec }"}</Badge>
+          <Badge className="max-w-full whitespace-normal break-all">POST {st.appBaseUrl}/api/track/portfolio</Badge>
+          <Badge className="max-w-full whitespace-normal break-all">{"{ ref, path, type: view|leave, durationSec }"}</Badge>
         </div>
       </Section>
     </div>

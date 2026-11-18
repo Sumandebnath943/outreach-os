@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 140" role="img" aria-label="OS Monogram OutreachOS logo">
+<g transform="translate(20 35)" style="color:#ddbd89"><g fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="8" width="44" height="48" rx="18"/><path d="M40 21h-9c-9 0-10 11-1 11h4c9 0 8 11-1 11h-9"/></g></g>
+<text x="108" y="89" fill="#eeeae3" font-family="Inter, Segoe UI, sans-serif" font-size="50" font-weight="700" letter-spacing="-1.7">Outreach<tspan fill="#ddbd89" font-weight="400">OS</tspan></text>
+</svg>

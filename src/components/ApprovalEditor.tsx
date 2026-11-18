@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCheck, Clock, Eye, Pause, RotateCcw, Save } from "lucide-react";
 import { api } from "@/lib/client";
+import { TRACK_TONE, GEO_TONE, TOUCH_TONE } from "@/lib/theme";
 import { GEO_LABEL, touchLabel } from "@/lib/meta";
 import { previewLinks, stripImages, toHtml } from "@/lib/render";
 import { localTimeLabel } from "@/lib/schedule";
@@ -68,9 +69,9 @@ export function ApprovalCard({
   }
 
   return (
-    <Card className={cn("overflow-hidden", selected && "border-zinc-500")}>
+    <Card className={cn("overflow-hidden", selected && "border-accent")}>
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <input type="checkbox" checked={selected} onChange={onToggle} className="h-4 w-4 accent-zinc-100" />
+        <input type="checkbox" checked={selected} onChange={onToggle} className="h-4 w-4 " />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold">{lead.company_name}</span>
@@ -79,12 +80,12 @@ export function ApprovalCard({
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Badge tone={item.touchNumber === 2 && item.variant === "WARM" ? "amber" : "sky"}>{touchName(item)}</Badge>
-            <Badge>{GEO_LABEL[lead.geo_region]}</Badge>
-            <Badge tone="violet">{lead.role_track}</Badge>
+            <Badge tone={TOUCH_TONE[touchLabel(item.touchNumber, item.variant)]}>{touchName(item)}</Badge>
+            <Badge tone={GEO_TONE[lead.geo_region]}>{GEO_LABEL[lead.geo_region]}</Badge>
+            <Badge tone={TRACK_TONE[lead.role_track]}>{lead.role_track}</Badge>
             {item.hasDraft && <Badge tone="amber">EDITED</Badge>}
             {lead.approval_status === "APPROVED" && <Badge tone="emerald">APPROVED</Badge>}
-            <span className="flex items-center gap-1 font-mono text-[10px] text-dim">
+            <span className="flex items-center gap-1 font-mono text-[11px] text-dim">
               <Clock className="h-3 w-3" />
               due {relTime(item.dueAt)} · {localTimeLabel(lead.geo_region)} ·{" "}
               <span className={item.inWindow ? "text-success" : "text-warning"}>{item.inWindow ? "in window" : "outside window"}</span>
@@ -127,7 +128,7 @@ export function ApprovalCard({
       {item.error ? (
         <div className="px-4 py-3 font-mono text-xs text-danger">{item.error}</div>
       ) : preview ? (
-        <div className="px-4 py-4">
+        <div className="light-surface px-4 py-4">
           <div className="mb-3 text-sm font-medium">{subject}</div>
           <div className="email-body rounded-md border border-line bg-bg p-4 text-[13px] leading-relaxed text-muted" dangerouslySetInnerHTML={{ __html: html }} />
         </div>

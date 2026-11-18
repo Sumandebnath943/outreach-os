@@ -34,6 +34,7 @@ import {
 } from "@/lib/types";
 import { gmailUrl } from "@/lib/notify";
 import { cn, fullName, relTime } from "@/lib/utils";
+import { STATUS_TONE } from "@/lib/theme";
 import { Badge, Button, Input, Label, Select, Textarea, toast } from "../ui";
 
 interface Dossier {
@@ -87,7 +88,7 @@ function describe(ev: TrackingEvent, logs: EmailLog[]): { icon: React.ReactNode;
             {bot}
           </>
         ),
-        tone: bot ? "text-dim" : "text-fg",
+        tone: bot ? "text-dim" : "text-info",
       };
     case "LINK_CLICK":
       return {
@@ -106,22 +107,22 @@ function describe(ev: TrackingEvent, logs: EmailLog[]): { icon: React.ReactNode;
         icon: <Globe className="h-3 w-3" />,
         text: (
           <>
-            Viewed <span className="font-mono text-warning">{String(m.path ?? "/")}</span>
+            Viewed <span className="font-mono text-teal">{String(m.path ?? "/")}</span>
             {m.durationSec ? <> for {Number(m.durationSec)}s</> : null}
           </>
         ),
-        tone: "text-warning",
+        tone: "text-teal",
       };
     case "REPLY_RECEIVED":
       return {
         icon: <MessageSquareReply className="h-3 w-3" />,
         text: (
           <>
-            Replied <Badge tone="emerald">{String(m.sentiment ?? "")}</Badge>
+            Replied <Badge tone={STATUS_TONE[String(m.sentiment)] || "neutral"}>{String(m.sentiment ?? "")}</Badge>
             <div className="mt-1 text-muted italic">“{String(m.snippet ?? "")}”</div>
           </>
         ),
-        tone: "text-success",
+        tone: "text-violet",
       };
     default:
       return {
@@ -216,13 +217,13 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
           <div className="p-6 text-sm text-dim">{error ?? "Loading dossier…"}</div>
         ) : (
           <>
-            {lead.deleted_at && <div className="border-b border-line bg-amber-500/10 p-4 text-sm text-warning">In Trash. Sending is stopped. <Link className="underline" href="/leads">Restore from Leads → Trash</Link></div>}
+            {lead.deleted_at && <div className="border-b border-line bg-warning/10 p-4 text-sm text-warning">In Trash. Sending is stopped. <Link className="underline" href="/leads">Restore from Leads → Trash</Link></div>}
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-2"><Link className="mr-auto text-sm text-info" href={embedded ? "/leads" : `/leads/${leadId}`}>{embedded ? "← All leads" : "Open full details ↗"}</Link><Button variant="danger" size="sm" disabled={!!lead.deleted_at} onClick={remove}>Move to Trash</Button></div>
             {/* header */}
             <div className="border-b border-line px-6 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-dim uppercase">
+                  <div className="flex items-center gap-2 font-mono text-[11px] tracking-widest text-dim uppercase">
                     <span className={cn("h-1.5 w-1.5 rounded-full", STAGE_META[lead.funnel_stage].dot)} />
                     {STAGE_META[lead.funnel_stage].n} · {STAGE_META[lead.funnel_stage].label}
                   </div>
@@ -260,21 +261,21 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
               {/* telemetry strip */}
               <div className="mt-4 grid grid-cols-4 gap-px overflow-hidden rounded-md border border-line bg-line font-mono">
                 {[
-                  ["OPENS", lead.open_count, lead.open_count >= 2],
-                  ["CLICKS", lead.click_count, lead.click_count > 0],
-                  ["PAGE VIEWS", lead.portfolio_visit_count, lead.portfolio_visit_count > 0],
-                  ["TOUCH", `${lead.current_touch}/4`, false],
-                ].map(([k, v, hot]) => (
+                  ["OPENS", lead.open_count, lead.open_count > 0 ? "text-info" : "text-fg"],
+                  ["CLICKS", lead.click_count, lead.click_count > 0 ? "text-warning" : "text-fg"],
+                  ["PAGE VIEWS", lead.portfolio_visit_count, lead.portfolio_visit_count > 0 ? "text-teal" : "text-fg"],
+                  ["TOUCH", `${lead.current_touch}/4`, "text-fg"],
+                ].map(([k, v, tone]) => (
                   <div key={String(k)} className="bg-card px-3 py-2">
-                    <div className="text-[9px] tracking-widest text-dim">{k}</div>
-                    <div className={cn("text-base tabular", hot ? "text-warning" : "text-fg")}>{v}</div>
+                    <div className="text-[11px] tracking-widest text-dim">{k}</div>
+                    <div className={cn("text-base tabular", String(tone))}>{v}</div>
                   </div>
                 ))}
               </div>
               {!!lead.portfolio_pages_viewed?.length && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {lead.portfolio_pages_viewed.map((p) => (
-                    <Badge key={p} tone="amber">
+                    <Badge key={p} tone="teal">
                       {p}
                     </Badge>
                   ))}
@@ -331,9 +332,9 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs">
                       <div className="flex items-center gap-2">
-                        <span className={cn("h-1.5 w-1.5 rounded-full", lead.sequence_active ? "bg-emerald-400" : "bg-zinc-600")} />
+                        <span className={cn("h-1.5 w-1.5 rounded-full", lead.sequence_active ? "bg-success" : "bg-dim")} />
                         <span className="font-medium">{lead.sequence_active ? "Sequence active" : "Sequence stopped"}</span>
-                        <Badge tone={lead.approval_status === "APPROVED" ? "emerald" : lead.approval_status === "PAUSED" ? "rose" : "neutral"}>
+                        <Badge tone={STATUS_TONE[lead.approval_status]}>
                           {lead.approval_status}
                         </Badge>
                       </div>
@@ -372,15 +373,15 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                 </div>
 
                 {lead.reply_snippet && (
-                  <div className="col-span-2 rounded-md border border-emerald-500/25 bg-emerald-500/5 p-3">
+                  <div className="col-span-2 rounded-md border border-stage-replied/30 bg-stage-replied/10 p-3">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs font-medium text-success">
+                      <div className="flex items-center gap-2 text-xs font-medium text-stage-replied">
                         <MessageSquareReply className="h-3.5 w-3.5" /> Reply {relTime(lead.replied_at)}
-                        {lead.reply_sentiment && <Badge tone="emerald">{lead.reply_sentiment}</Badge>}
+                        {lead.reply_sentiment && <Badge tone={STATUS_TONE[lead.reply_sentiment] || "neutral"}>{lead.reply_sentiment}</Badge>}
                       </div>
                     </div>
                     {typeof lastReply?.metadata.summary === "string" && lastReply.metadata.analysedBy === "ai" && (
-                      <p className="mt-2 text-xs text-success">
+                      <p className="mt-2 text-xs text-stage-replied">
                         🧠 {String(lastReply.metadata.intent ?? "").replace(/_/g, " ").toLowerCase()} — {lastReply.metadata.summary}
                       </p>
                     )}
@@ -429,7 +430,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                 )}
               </section>
 
-              {data?.deliveryFailure && <div className="mx-6 my-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-danger"><strong>Delivery problem</strong><p className="mt-1 whitespace-pre-wrap">{diagnosis ?? data?.deliveryFailure}</p>{lead.sub_stage === "BOUNCED" && <Button size="sm" className="mt-2" loading={diagnosing} onClick={async () => { setDiagnosing(true); try { const result = await api<{ reason: string }>(`/api/leads/${leadId}/delivery`); setDiagnosis(result.reason); } catch (e) { toast((e as Error).message, "err"); } finally { setDiagnosing(false); } }}>Read full delivery notice</Button>}</div>}
+              {data?.deliveryFailure && <div className="mx-6 my-3 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger"><strong>Delivery problem</strong><p className="mt-1 whitespace-pre-wrap">{diagnosis ?? data?.deliveryFailure}</p>{lead.sub_stage === "BOUNCED" && <Button size="sm" className="mt-2" loading={diagnosing} onClick={async () => { setDiagnosing(true); try { const result = await api<{ reason: string }>(`/api/leads/${leadId}/delivery`); setDiagnosis(result.reason); } catch (e) { toast((e as Error).message, "err"); } finally { setDiagnosing(false); } }}>Read full delivery notice</Button>}</div>}
               {/* tabs */}
               <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-bg px-6 pt-2">
                 {(
@@ -465,7 +466,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                             {d.icon}
                           </span>
                           <div className={cn("text-[13px]", d.tone)}>{d.text}</div>
-                          <div className="font-mono text-[10px] text-dim">
+                          <div className="font-mono text-[11px] text-dim">
                             {fmt(ev.created_at)} · {relTime(ev.created_at)}
                           </div>
                         </li>
@@ -482,7 +483,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                         <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
                           <div className="min-w-0">
                             <div className="truncate text-[13px] font-medium">{m.subject}</div>
-                            <div className="font-mono text-[10px] text-dim">
+                            <div className="font-mono text-[11px] text-dim">
                               {touchLabel(m.touch_number, m.branch_variant)} · {m.provider} · {fmt(m.sent_at)}
                             </div>
                           </div>
@@ -496,7 +497,7 @@ export function LeadDrawer({ leadId, onClose, embedded = false }: { leadId: stri
                         {m.status === "QUEUED_FOR_APPROVAL" ? (
                           <pre className="px-3 py-3 font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-muted">{m.body_html}</pre>
                         ) : m.body_html ? (
-                          <div className="email-body px-3 py-3 text-[13px] leading-relaxed text-muted" dangerouslySetInnerHTML={{ __html: m.body_html }} />
+                          <div className="light-surface email-body px-3 py-3 text-[13px] leading-relaxed text-muted" dangerouslySetInnerHTML={{ __html: m.body_html }} />
                         ) : null}
                       </article>
                     ))}

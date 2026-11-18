@@ -29,7 +29,7 @@ export function SignInForm({ next, configured }: { next: string; configured: boo
   }
 
   const field =
-    "h-10 w-full rounded-md border border-line bg-bg px-3 text-sm text-fg placeholder:text-dim focus:border-zinc-500 focus:outline-none";
+    "h-10 w-full rounded-md border border-line bg-bg px-3 text-sm text-fg placeholder:text-dim focus:border-accent focus:outline-none";
   return (
     <form onSubmit={submit} className="space-y-3" aria-label="Sign in">
       <div>

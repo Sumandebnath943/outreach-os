@@ -134,7 +134,7 @@ export default function ImportPage() {
         onClick={() => inputRef.current?.click()}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-line bg-card px-6 py-10 text-center transition-colors hover:border-line-strong",
-          dragOver && "border-zinc-400 bg-raised",
+          dragOver && "border-info bg-raised",
         )}
       >
         {fileName ? <FileSpreadsheet className="h-7 w-7 text-success" /> : <Upload className="h-7 w-7 text-dim" />}
@@ -219,7 +219,7 @@ export default function ImportPage() {
             </div>
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-card font-mono text-[10px] tracking-wider text-dim uppercase">
+                <thead className="sticky top-0 bg-card font-mono text-[11px] tracking-wider text-dim uppercase">
                   <tr className="border-b border-line">
                     <th className="px-3 py-2">#</th>
                     <th className="px-3 py-2">Status</th>

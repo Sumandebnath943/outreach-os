@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger palette to the existing dashboard layout and replacing the public homepage with a minimal sign-in screen. Lint, types, 153 tests, production build and isolated desktop/mobile browser checks passed. App commit `1d63c08` passed CI and Vercel deployment; all 13 live browser checks passed with zero page errors.
+Last updated: **19 Nov 2026**, after the owner selected **05 · Signal Arc** and requested stronger, consistent color across the Night Ledger workspace. Branding, stage/status surfaces, Analytics colors, Templates/Prechecks decluttering and Settings accents are implemented. Local lint/types, all 153 tests, production build, nine browser regressions and 24 expanded review groups passed; live verification follows publication. Full page-by-page assessment: `docs/UI_VISUAL_REVIEW_2026-11-19.md`.
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger pa
 |---|---|
 | Repo | `github.com/Sumandebnath943/outreach-os`, branch `main` (the only branch; push to main) |
 | Production | `https://outreachos.houseofnamus.com` (Vercel, auto-deploys from `main`) |
-| Visual direction | **Existing dashboard layout retained.** Night Ledger warm charcoal content, ivory sidebar, brass primary actions and distinct labeled stage colors. Public home is a minimal sign-in screen, selected by the owner; no mockup layouts were adopted. |
+| Visual direction | **Pipeline layout retained.** Night Ledger warm charcoal content, ivory sidebar, brass primary actions; stronger stage tints/headers/outlines and shared semantic/category colors. Templates uses editor/preview panes; Prechecks uses colored count filters and expandable help. Settings grid retained. **Signal Arc** is the selected logo; it sits above/outside the minimal sign-in card and is shared with navigation/favicon. |
 | Database | Supabase (free tier). Migrations **001–015 applied**. 014 schema and 015 deletion/quota behavior verified in production on 18 Nov 2026 |
 | Scheduler | Supabase Cron (`009`): `outreachos-worker-weekdays` every 10 min Mon–Fri UTC, `outreachos-worker-weekends` hourly at weekends, `outreachos-cleanup` daily (`010`) |
 | Mode | **AUTO_PILOT**, daily cap 45, **warm-up on** (started 2026-11-18 → week 1 = 10/day, week 2 = 20, week 3 = 30, then 45) |
@@ -74,6 +74,8 @@ Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger pa
 
 24. Lead-management upgrade deployed and verified; see `docs/UPGRADE_013.md` for scope and validation. Production retains 299 leads, 294 approved, zero pending; quota shows nine test sends and one outreach send, including one bounce. No outbound messages or live worker runs were triggered by implementation or verification.
 
+25. Signal Arc branding and Night Ledger UI refinement: shared tones in `src/lib/theme.ts`, colored pipeline panels, consistent status/category/metric colors, Templates/Prechecks decluttering and Settings section accents. Responsive fixes cover pagination, long badges and recipient-window fields. Template discard now resets inherited edits when switching between tracks sharing a master. See `docs/UI_VISUAL_REVIEW_2026-11-19.md`; local synthetic browser review covers all eight dashboard pages at 320/390/768/1440px, populated dossier/email history, empty/error states and 18 chip contrast pairs. Production sending/data/settings are untouched by this visual task.
+
 ---
 
 ## 3. Pending / follow-ups
@@ -95,6 +97,8 @@ Last updated: **19 Nov 2026**, after applying the owner-selected Night Ledger pa
 | Decision | Reason |
 |---|---|
 | Preserve the current dashboard layout; Night Ledger colors only | Owner rejected all three mockup layouts and explicitly chose colors only (19 Nov). Homepage preference: minimal sign-in. |
+| Signal Arc emblem and wordmark; logo outside sign-in card | Owner selected option 05 from five custom SVG directions. One shared brand component prevents drift between public, desktop and mobile surfaces. |
+| Shared semantic and category tones across pages | Owner requested stronger accents without color mismatches. Stage, status, track, region, touch and activity meanings are documented in the visual review; color is always accompanied by labels. |
 | Local codebase is canonical; GitHub v1 replaced | v1 had security holes and fake sends |
 | Plain personal emails, no HTML design or logo | Inbox placement and reply rates; branding lives on the portfolio |
 | Job-seeker voice from the owner's own emails; no sales patterns; no employer name in the opener | Owner rejected sales-style copy; an employer name in the opener reads like recruiting |
@@ -158,4 +162,5 @@ npm install --package-lock-only
 | 2026-11-18 | (upgrade 014) | Built free prechecks and a light workspace based on reviewed Linear/Attio/Carbon guidance; owner selected light direction. 150 tests and production build pass. All 299 original leads removed after private backup; suppression retained. Production E2E validation in progress. |
 | 2026-11-18 | `8957fcd`, `4fb44da` | Deployed free prechecks/light workspace, then final dispatch guards and deletion quota fix. 153 tests + CI/build green; 12 real emails only to test-inbox aliases. Real positive/OOO replies, resumed touch, both T2 branches, four-touch threading, tracking, management, auth and Telegram verified. All original/test leads removed, original settings restored; quota 22/10 remains accurate after deletion. |
 | 2026-11-19 | `1d63c08` | Kept all dashboard structure/controls intact and applied warm charcoal/ivory/brass tokens with eight distinct stage identities and readable status colors. Replaced the homepage with owner-selected minimal sign-in. Lint/types, all 153 tests, production build, local sign-in/error handling, paging/drafts/Trash and desktop/mobile checks passed. No data, queue, sending logic or settings changed. CI/Vercel green; all 13 live browser checks passed with zero page errors. |
+| 2026-11-19 | (UI refinement) | Owner selected Signal Arc. Added shared brand/semantic tones, stronger stage panels, colored Analytics, wider Templates editor/preview with expandable secondary controls, compact Prechecks summaries/help, and Settings section identity. Fixed inherited-template discard, status/metric color drift and narrow-screen overflow. Local validation: 153 tests/build, nine legacy browser groups, 24 expanded groups, 18 contrast pairs. Live verification follows publication. |
 | earlier | — | See `git log` |
