@@ -1,7 +1,25 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 import { recordEngagement } from "@/lib/server/engagement";
-import { getSettings } from "@/lib/server/db";
+import { db, getSettings } from "@/lib/server/db";
 import { verifyClick } from "@/lib/server/tracking";
+import { restampStage } from "@/lib/render";
+import { UUID_RE } from "@/lib/utils";
+
+/** Stamps utm_content with the funnel stage the lead is in right now, i.e. where the click happened. */
+async function withClickStage(dest: URL, leadId: string): Promise<URL> {
+  const content = dest.searchParams.get("utm_content");
+  if (!content || !UUID_RE.test(leadId)) return dest;
+  try {
+    const res = await db().from("leads").select("funnel_stage").eq("id", leadId).maybeSingle();
+    const stage = (res.data as { funnel_stage?: string } | null)?.funnel_stage;
+    if (!stage) return dest;
+    const out = new URL(dest);
+    out.searchParams.set("utm_content", restampStage(content, stage));
+    return out;
+  } catch {
+    return dest; // never block the redirect on a lookup failure
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -42,18 +60,19 @@ export async function GET(req: NextRequest) {
   if (!dest) return fallback!;
 
   const ua = req.headers.get("user-agent") ?? "";
+  const to = await withClickStage(dest, lead); // stage before this click's own promotion
   after(async () => {
     try {
       await recordEngagement(lead, "click", {
         logId: log,
         userAgent: ua,
-        metadata: { url: dest.toString(), path: dest.pathname, ua: ua.slice(0, 300) },
+        metadata: { url: to.toString(), path: to.pathname, utm_content: to.searchParams.get("utm_content"), ua: ua.slice(0, 300) },
       });
     } catch (e) {
       console.error("[track/click]", e);
     }
   });
-  return redirect(dest);
+  return redirect(to);
 }
 
 /** Link scanners probe with HEAD — redirect without counting a click. */

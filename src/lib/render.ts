@@ -59,14 +59,70 @@ export function findUnresolved(text: string): string[] {
   return [...out];
 }
 
-export function withRef(base: string, leadId: string): string {
+export function withRef(base: string, leadId: string, utm?: Utm): string {
   try {
     const u = new URL(base);
     u.searchParams.set("ref", leadId);
+    if (utm) for (const [k, v] of Object.entries(utm)) if (v) u.searchParams.set(k, v);
     return u.toString();
   } catch {
     return `${base}${base.includes("?") ? "&" : "?"}ref=${encodeURIComponent(leadId)}`;
   }
+}
+
+// ── UTM tagging ──────────────────────────────────────────────────────────────
+// Every portfolio/résumé link carries who it was sent to and where they were in
+// the funnel, so the portfolio's own visitor beacon (e.g. Telegram alerts) can
+// read it straight from the landing URL:
+//   utm_source=outreachos  utm_medium=email
+//   utm_campaign=<company>  utm_term=<person>  utm_content=<funnel stage>-<touch>
+// utm_content is written with the stage at send time and re-stamped with the
+// lead's stage at the moment of the click by the click redirect.
+
+export interface Utm {
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_term: string;
+  utm_content: string;
+}
+
+/** "Acme AI, Inc." → "acme-ai-inc"; accents folded, at most 60 chars. */
+export function utmSlug(s: string | null | undefined): string {
+  return (s ?? "")
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+}
+
+/** "WARM_ENGAGED" + "T2A" → "warm_engaged-t2a" */
+export function utmContent(stage: string, touchCode: string): string {
+  return `${stage.toLowerCase()}-${touchCode.toLowerCase()}`;
+}
+
+/** Replaces the stage part of utm_content, keeping the touch suffix ("…-t2a"). */
+export function restampStage(utmContentValue: string, stage: string): string {
+  const touch = utmContentValue.split("-").pop() ?? "";
+  return /^t\d[ab]?$/.test(touch) ? utmContent(stage, touch) : utmContentValue;
+}
+
+export function buildUtm(
+  lead: Pick<Lead, "company_name" | "first_name" | "last_name">,
+  stage: string,
+  touchCode: string,
+): Utm {
+  const person = [lead.first_name === "Team" ? "" : lead.first_name, lead.last_name ?? ""].join(" ");
+  return {
+    utm_source: "outreachos",
+    utm_medium: "email",
+    utm_campaign: utmSlug(lead.company_name) || "unknown-company",
+    utm_term: utmSlug(person) || "team",
+    utm_content: utmContent(stage, touchCode),
+  };
 }
 
 /** "https://sumandebnath.houseofnamus.com/resume" → "sumandebnath.houseofnamus.com/resume" */

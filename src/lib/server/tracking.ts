@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "./env";
-import { displayUrl, withRef, type RenderLinks } from "../render";
+import { displayUrl, withRef, type RenderLinks, type Utm } from "../render";
 import type { SystemSettings } from "../types";
 
 function sign(parts: string[]): string {
@@ -27,14 +27,18 @@ export function pixelUrl(leadId: string, logId: string): string {
   return `${env.appBaseUrl()}/api/track/open?l=${leadId}&e=${logId}`;
 }
 
-/** Production links: HTML anchors go through the click tracker; text part uses direct ?ref= URLs. */
+/**
+ * Production links: HTML anchors go through the click tracker; the text part uses the direct
+ * destination. Both carry ?ref=<lead> plus the UTM tags (company, person, stage-touch).
+ */
 export function trackedLinks(
   leadId: string,
   logId: string,
   settings: Pick<SystemSettings, "portfolio_base_url" | "resume_url">,
+  utm?: Utm,
 ): RenderLinks {
-  const portfolio = withRef(settings.portfolio_base_url, leadId);
-  const resume = withRef(settings.resume_url, leadId);
+  const portfolio = withRef(settings.portfolio_base_url, leadId, utm);
+  const resume = withRef(settings.resume_url, leadId, utm);
   return {
     tracked_portfolio_url: {
       href: clickUrl(leadId, logId, portfolio),

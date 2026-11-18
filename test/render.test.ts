@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { displayUrl, findUnresolved, mergeVars, previewLinks, stripImages, toHtml, toPlainText, withRef } from "@/lib/render";
+import {
+  buildUtm,
+  displayUrl,
+  findUnresolved,
+  mergeVars,
+  previewLinks,
+  restampStage,
+  stripImages,
+  toHtml,
+  toPlainText,
+  withRef,
+} from "@/lib/render";
 import type { Lead } from "@/lib/types";
 
 const L = (p: Partial<Lead> = {}) =>
@@ -58,6 +69,28 @@ describe("toHtml / toPlainText", () => {
 
   it("uses direct ?ref= URLs in the text part", () => {
     expect(toPlainText("Resume: {{tracked_resume_url}}", links)).toBe(`Resume: https://sumandebnath.houseofnamus.com/resume?ref=${ID}`);
+  });
+});
+
+describe("UTM tagging", () => {
+  it("tags links with company, person and stage-touch", () => {
+    const utm = buildUtm({ company_name: "Acme AI, Inc.", first_name: "Zoë", last_name: "O'Neil" }, "OUTREACH_ACTIVE", "T2A");
+    expect(utm).toEqual({
+      utm_source: "outreachos",
+      utm_medium: "email",
+      utm_campaign: "acme-ai-inc",
+      utm_term: "zoe-o-neil",
+      utm_content: "outreach_active-t2a",
+    });
+    const url = new URL(withRef("https://sumandebnath.houseofnamus.com", ID, utm));
+    expect(url.searchParams.get("ref")).toBe(ID);
+    expect(url.searchParams.get("utm_campaign")).toBe("acme-ai-inc");
+  });
+
+  it("uses 'team' when there is no real first name, and re-stamps the stage at click time", () => {
+    expect(buildUtm({ company_name: "Orbit", first_name: "Team", last_name: null }, "OUTREACH_ACTIVE", "T1").utm_term).toBe("team");
+    expect(restampStage("outreach_active-t2b", "WARM_ENGAGED")).toBe("warm_engaged-t2b");
+    expect(restampStage("custom-value", "WARM_ENGAGED")).toBe("custom-value");
   });
 });
 

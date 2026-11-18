@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "simulate": "vitest run test/simulation.test.ts",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "live": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/live-test.ts"
   },
   "engines": {
     "node": ">=20"
@@ -41,6 +43,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.28",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.0",
     "vitest": "^5.1.0"
   }

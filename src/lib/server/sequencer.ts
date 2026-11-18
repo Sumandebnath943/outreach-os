@@ -8,7 +8,8 @@ import { appendReference, buildMime, newMessageId, replySubject } from "./mime";
 import { isResendConfigured, sendViaResend } from "./resend";
 import { pixelUrl, trackedLinks } from "./tracking";
 import { branchFor, inboundCutoff, LATE_REPLY_WINDOW_DAYS, pickTemplate, SENDABLE_STAGES, waitFor } from "../funnel";
-import { findUnresolved, mergeVars, toHtml, toPlainText } from "../render";
+import { touchLabel } from "../meta";
+import { buildUtm, findUnresolved, mergeVars, toHtml, toPlainText } from "../render";
 import { addBusinessDaysInTz, addCalendarDays, isInSendWindow, startOfTodayIn } from "../schedule";
 import { classifyReply, isAuthErrorMessage, isHardBounceMessage } from "../signals";
 import type { BranchVariant, EmailLog, ExecutionMode, Lead, QueueReport, SequenceTemplate, SystemSettings } from "../types";
@@ -222,7 +223,9 @@ export async function dispatchTouch(
   if (unresolved.length) throw new Error(`Unresolved template variables: ${unresolved.join(", ")}`);
 
   const logId = draft.draftId ?? randomUUID();
-  const links = trackedLinks(lead.id, logId, settings);
+  // UTM stage = where the lead sits once this email is out (T1 moves LEAD_QUEUED → OUTREACH_ACTIVE)
+  const stageAfterSend = lead.funnel_stage === "LEAD_QUEUED" ? "OUTREACH_ACTIVE" : lead.funnel_stage;
+  const links = trackedLinks(lead.id, logId, settings, buildUtm(lead, stageAfterSend, touchLabel(touch, variant)));
   const text = toPlainText(draft.body, links);
   const html = toHtml(draft.body, links, pixelUrl(lead.id, logId));
 

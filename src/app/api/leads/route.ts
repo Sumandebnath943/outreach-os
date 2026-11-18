@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { db, getSettings, logEvent, must, PAGE_SIZE, updateLead } from "@/lib/server/db";
 import { fail, ok, readJson, route } from "@/lib/server/http";
-import { resumeStageFor, stageSideEffects } from "@/lib/funnel";
+import { loadTemplates } from "@/lib/server/sequencer";
+import { resumeDueAt, resumeStageFor, stageSideEffects, waitFor } from "@/lib/funnel";
 import { cleanMultiline, FIELD_LIMITS, normalizeLead, sanitizeUrl } from "@/lib/ingest";
 import { FUNNEL_STAGES, GEO_REGIONS, ROLE_TRACKS, type FunnelStage, type Lead } from "@/lib/types";
 import { UUID_RE } from "@/lib/utils";
@@ -111,11 +112,27 @@ export const PATCH = route(async (req: Request) => {
 
   if (body.action === "resume_sequence") {
     if (current.current_touch >= 4) return fail("All 4 touches already sent");
+    const [templates, lastSent] = await Promise.all([
+      loadTemplates(),
+      db()
+        .from("email_logs")
+        .select("sent_at")
+        .eq("lead_id", current.id)
+        .in("status", ["SENT", "BOUNCED"])
+        .order("sent_at", { ascending: false })
+        .limit(1),
+    ]);
+    const lastAt = (lastSent.data as { sent_at: string }[] | null)?.[0]?.sent_at;
+    const due = resumeDueAt(
+      lastAt ? new Date(lastAt) : null,
+      waitFor(templates, current.role_track, current.current_touch + 1),
+      current.geo_region,
+    );
     Object.assign(patch, {
       funnel_stage: resumeStageFor(current),
       sequence_active: true,
       sub_stage: null,
-      next_touch_due_at: new Date().toISOString(),
+      next_touch_due_at: due.toISOString(),
       approval_status: "PENDING",
     } satisfies Partial<Lead>);
   } else if (body.funnel_stage && body.funnel_stage !== current.funnel_stage) {

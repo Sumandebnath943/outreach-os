@@ -2,7 +2,7 @@
  * Funnel & sequencer rules — pure and isomorphic so the worker, the API routes
  * and the dashboard all apply exactly the same logic (and so it is unit-testable).
  */
-import { addCalendarDays } from "./schedule";
+import { addBusinessDaysInTz, addCalendarDays } from "./schedule";
 import {
   CLOSED_SUB_STAGES,
   INTERVIEW_SUB_STAGES,
@@ -64,6 +64,17 @@ export function pickTemplate(
 export function waitFor(templates: SequenceTemplate[], track: Lead["role_track"], touch: number): number {
   const t = pickTemplate(templates, track, touch, touch === 2 ? "WARM" : "STANDARD");
   return t?.wait_business_days ?? DEFAULT_WAITS[touch] ?? 3;
+}
+
+/**
+ * When a resumed sequence's next touch is due: the original schedule (last send + the next
+ * touch's wait, in the recipient's business days), or now if that moment has already passed.
+ * Resuming after an early auto-reply therefore never fires a follow-up ahead of schedule.
+ */
+export function resumeDueAt(lastSentAt: Date | null, waitBusinessDays: number, geo: Lead["geo_region"], now = new Date()): Date {
+  if (!lastSentAt) return now;
+  const due = addBusinessDaysInTz(lastSentAt, waitBusinessDays, geo);
+  return due > now ? due : now;
 }
 
 /** Stage a lead returns to when its sequence is resumed by hand. */

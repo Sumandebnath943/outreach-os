@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchFor, inboundCutoff, isWarm, pickTemplate, resumeStageFor, stageSideEffects, waitFor } from "@/lib/funnel";
+import { branchFor, inboundCutoff, isWarm, pickTemplate, resumeDueAt, resumeStageFor, stageSideEffects, waitFor } from "@/lib/funnel";
 import type { Lead, SequenceTemplate } from "@/lib/types";
 
 const tpl = (p: Partial<SequenceTemplate>): SequenceTemplate => ({
@@ -90,6 +90,20 @@ describe("inboundCutoff", () => {
 
   it("falls back to creation time when nothing was sent", () => {
     expect(inboundCutoff(undefined, lead()).toISOString()).toBe("2026-11-01T23:50:00.000Z");
+  });
+});
+
+describe("resumeDueAt", () => {
+  it("keeps the original schedule after an early auto-reply", () => {
+    const t1 = new Date("2026-11-23T04:30:00Z"); // Mon 10:00 IST
+    const now = new Date("2026-11-23T06:00:00Z"); // resumed 90 minutes later
+    expect(resumeDueAt(t1, 3, "INDIA", now).toISOString()).toBe("2026-11-26T04:30:00.000Z"); // Thu 10:00 IST
+  });
+
+  it("is due immediately when the schedule has already passed", () => {
+    const now = new Date("2026-12-10T06:00:00Z");
+    expect(resumeDueAt(new Date("2026-11-23T04:30:00Z"), 3, "INDIA", now)).toEqual(now);
+    expect(resumeDueAt(null, 3, "INDIA", now)).toEqual(now);
   });
 });
 

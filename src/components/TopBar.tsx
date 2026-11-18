@@ -13,6 +13,7 @@ import { Button, Metric, toast } from "./ui";
 const NAV = [
   { href: "/", label: "Pipeline" },
   { href: "/approvals", label: "Approvals" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/import", label: "Import" },
   { href: "/templates", label: "Templates" },
   { href: "/settings", label: "Settings" },

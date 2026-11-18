@@ -61,7 +61,8 @@ export default function PrivacyPolicyPage() {
         For each recruiter or hiring manager I contact, the tool stores business contact details I provide (name, work email, company,
         job title, public profile links and notes), the emails I sent, and engagement signals: whether an email was opened (via a
         tracking pixel), which links were clicked, and which pages of my portfolio site were viewed after following those links, with
-        approximate time on page. This is used only to manage my own follow-ups.
+        approximate time on page. Links to my portfolio carry a reference ID and campaign parameters (company, name and outreach
+        stage) so my own site can attribute the visit. This is used only to manage my own follow-ups.
       </p>
       <p>
         If you received an email from me and want your data removed, or don&rsquo;t want to hear from me again, reply to the email or write
