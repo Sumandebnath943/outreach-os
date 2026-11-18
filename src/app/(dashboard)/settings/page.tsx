@@ -38,11 +38,11 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
   );
 }
 
-function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail?: string }) {
+function StatusRow({ ok, label, detail, optional }: { ok: boolean; label: string; detail?: string; optional?: boolean }) {
   return (
     <div className="flex items-center justify-between border-b border-line py-2 text-sm last:border-0">
       <span className="flex items-center gap-2">
-        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-400" : "bg-rose-400")} />
+        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-400" : optional ? "bg-zinc-600" : "bg-rose-400")} />
         {label}
       </span>
       <span className="font-mono text-[11px] text-dim">{detail ?? (ok ? "ok" : "missing")}</span>
@@ -103,6 +103,8 @@ export default function SettingsPage() {
       </div>
     );
   const st = data.status;
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(st.appBaseUrl);
+  const baseUrlOk = !isLocal && st.appBaseUrl.startsWith("https://");
   const num = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: Number(e.target.value) });
   const str = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
 
@@ -236,11 +238,11 @@ export default function SettingsPage() {
 
         <Section title="Connections & environment">
           <StatusRow ok={st.gmailConnected} label="Gmail API" detail={st.gmailConnected ? `token from ${st.gmailTokenSource}` : st.googleClientConfigured ? "not authorised" : "client id/secret missing"} />
-          <StatusRow ok={st.resendConfigured} label="Resend API" detail={st.resendConfigured ? "ok" : "optional"} />
+          <StatusRow ok={st.resendConfigured} optional label="Resend API" detail={st.resendConfigured ? "ok" : "optional · not used"} />
           <StatusRow ok={st.cronSecretSet} label="CRON_SECRET" />
           <StatusRow ok={st.trackingSecretSet} label="TRACKING_SECRET" detail={st.trackingSecretSet ? "ok" : "falling back"} />
           <StatusRow ok={st.dashboardAuth} label="Dashboard password" detail={st.dashboardAuth ? "ok" : "OPEN — set DASHBOARD_PASSWORD"} />
-          <StatusRow ok={!st.appBaseUrl.includes("localhost")} label="APP_BASE_URL" detail={st.appBaseUrl} />
+          <StatusRow ok={baseUrlOk} label="APP_BASE_URL" detail={st.appBaseUrl} />
           <div className="mt-4 flex gap-2">
             {st.googleClientConfigured ? (
               <a
@@ -263,9 +265,11 @@ export default function SettingsPage() {
               </Button>
             )}
           </div>
-          {st.appBaseUrl.includes("localhost") && (
+          {!baseUrlOk && (
             <p className="mt-3 text-xs text-amber-300">
-              Tracking pixels and click links point at localhost — set APP_BASE_URL to your public deployment before sending.
+              {isLocal
+                ? "Tracking pixels and click links point at localhost — set APP_BASE_URL to your public deployment before sending."
+                : "APP_BASE_URL must start with https:// — Google rejects the Gmail sign-in redirect otherwise, and tracked links would use plain HTTP. Fix it in Vercel and redeploy."}
             </p>
           )}
         </Section>
