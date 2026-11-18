@@ -8,7 +8,7 @@ Implemented and tested on 18 November 2026. The owner confirmed migration 013 ra
 2. Deploy this app version only after that SQL succeeds. The old app can continue operating while the new nullable/defaulted columns are added. This app version requires those additions; APIs report a database upgrade error if they are missing.
 3. After deployment, read Settings/Stats, open Leads and Approvals, and verify totals against the existing contacts. Review one draft without sending. Do not run the live-test worker against real contacts.
 
-No migration, email, Telegram notification, real lead mutation or live worker run was performed as part of the local implementation and tests. The database migration has been reviewed but has not been executed against Postgres in this environment. The owner's existing CSV edit is preserved.
+No migration, email, Telegram notification, real lead mutation or live worker run was performed by the agent as part of implementation and tests. The owner ran the migration; subsequent read-only schema checks confirmed its columns and tables exist. The owner's existing CSV edit is preserved.
 
 ## Behavior
 
@@ -43,4 +43,4 @@ Browser checks use a local production preview with synthetic records, all manage
 
 A unit regression also checks that full temporary delivery notices remain delays even when their preamble says the message was not delivered.
 
-Run `npm run check` and `npm run build` before deployment. Production has not yet been validated against migration 013.
+Deployment `f0c922f` passed GitHub CI and Vercel deployment on 18 November 2026. Twelve read-only production page/API checks passed, including Leads/details, Pipeline, Approvals, Imports, Stats and authentication protection. Migration 013 columns and tables were verified directly. Production retained 299 leads with 294 approved and zero pending; quota correctly reports nine test sends plus one outreach send, including one bounce, at the 10/day warm-up cap. Existing imports predate batch reporting, so history correctly starts empty. No worker or outbound action was invoked.

@@ -4,7 +4,7 @@
 > **Update it at the end of every task**: change "Current state", move items between Done and Pending, and add a line to the Change log and to Decisions where relevant.
 > The full product reference is `docs/PROJECT_BIBLE.md`. Setup and operations are in `README.md`.
 
-Last updated: **18 Nov 2026**, after implementing and testing the lead-management and queue upgrade. The owner confirmed migration 013 ran successfully and authorized pushing to main; deployment verification is next.
+Last updated: **18 Nov 2026**, after deploying and verifying the lead-management and queue upgrade (`f0c922f`). The owner applied migration 013. GitHub CI and Vercel succeeded; read-only production checks passed.
 
 ---
 
@@ -21,8 +21,8 @@ Last updated: **18 Nov 2026**, after implementing and testing the lead-managemen
 | Gmail | Connected (OAuth, `gmail.send` + `gmail.readonly`) |
 | Telegram | Working: reply alerts and 09:30 IST digest |
 | Groq AI | Working: reply triage (`openai/gpt-oss-20b`) |
-| CI | GitHub Actions `CI` green on `87b35a0` (lint + types + 110 tests + build) |
-| Deploy | Vercel deployed `87b35a0`: `/` serves the home page; signed-out `/pipeline` redirects to `/?next=/pipeline`; signed-out APIs return 401 (verified 18 Nov) |
+| CI | GitHub Actions `CI` green on `f0c922f` (lint + types + 121 tests + build) |
+| Deploy | Vercel deployed `f0c922f`. Twelve read-only page/API checks passed, including Leads/details, Approvals, Pipeline, Imports, Stats and signed-out protection. Migration 013 schema verified (18 Nov) |
 | Tests | Local lint, typecheck, all **121 tests in 13 files** (89 unit + 32 simulation scenarios), and production build passed during this upgrade (final results below). `npm run simulate` runs only the 32 scenarios |
 | Leads in prod | **299 total: 295 real imports + 4 live-test leads.** The 308-row enriched CSV produced 295 unique valid leads: 9 duplicate rows and 4 Gmail contacts missing company names were skipped. All 295 stored records match the normalized CSV fields. Of the real leads, 294 are queued/approved and one is closed/bounced. |
 | First real send | Mistral's `jobs@` address returned a verified permanent SMTP **550 5.1.1 / account does not exist**. Auto-archive was correct. Today's 10-send warm-up cap includes 9 earlier live-test sends and this one bounced send. |
@@ -71,7 +71,7 @@ Last updated: **18 Nov 2026**, after implementing and testing the lead-managemen
     - `docs/leads-template.csv` (header only) + `docs/leads-template-example.csv` (example rows, do not upload);
     - `docs/CODEX_PROMPT.md` (hand-off prompt for Codex/ChatGPT + how to check tests).
 
-24. Lead-management upgrade implemented locally; see `docs/UPGRADE_013.md` for scope, validation and deployment order. No outbound messages or live worker runs were triggered.
+24. Lead-management upgrade deployed and verified; see `docs/UPGRADE_013.md` for scope and validation. Production retains 299 leads, 294 approved, zero pending; quota shows nine test sends and one outreach send, including one bounce. No outbound messages or live worker runs were triggered by implementation or verification.
 
 ---
 
@@ -85,7 +85,6 @@ Last updated: **18 Nov 2026**, after implementing and testing the lead-managemen
 | P4 | Extend India festival dates beyond 2027 | agent | `src/lib/holidays.ts` (`INDIA_FESTIVALS`) before Dec 2027 |
 | P5 | Watch the first real sends: deliverability, bounces, replies | agent/owner | Analytics page; Telegram |
 | P6 | Optional roadmap | — | AI icebreakers on import, A/B subjects, bounce/warm Telegram alerts, multi-user white-label |
-| P7 | Deploy and verify the upgrade | agent | Owner confirmed migration 013 ran and authorized pushing. Local lint, types, 121 tests, production build and nine browser smoke checks passed. Verify CI and production after pushing; do not invoke the live worker. |
 | P8 | Email prechecks deferred | owner | No verifier integration, DNS precheck, verification queue or new send gate was added. Existing bounce detection remains; detailed SMTP reasons are captured for future bounces. Existing bounced leads can read the full notice on demand from their details page. |
 
 ---
@@ -153,4 +152,5 @@ npm install --package-lock-only
 | 2026-11-18 | (docs fix) | Docs checked against the code: test counts, S7, Hybrid subject, OOO behaviour, HEAD probes, alert latency |
 | 2026-11-18 | (read-only audit) | Reconciled first real import (308 → 295), verified genuine SMTP 5.1.1 bounce, 9 test sends + 1 real bounce consuming today's cap, all 294 remaining real leads approved, live connections/auth and 1,180 template renders. Recorded approval API/UI limits and source-data gaps; production unchanged. |
 | 2026-11-18 | (local upgrade) | Implemented all approved fixes except deferred email prechecks. Added migration 013 and nine simulation regressions plus a full delivery-notice unit regression covering scale, Trash, suppression, import reports, regional fairness and quota. Deploy only after owner applies migration. |
+| 2026-11-18 | `f0c922f` | Owner confirmed migration 013 and authorized push. CI and Vercel succeeded; twelve read-only production page/API checks and schema checks passed. Counts: 299 leads, 294 approved, zero pending, quota 9 test + 1 outreach = 10/10. No sends, approvals or live worker runs triggered. |
 | earlier | — | See `git log` |
