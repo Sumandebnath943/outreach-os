@@ -29,12 +29,21 @@ export type RenderLinks = Partial<Record<LinkToken, RenderLink>>;
 type MergeLead = Pick<
   Lead,
   "first_name" | "last_name" | "company_name" | "job_title" | "target_role_opening" | "custom_icebreaker"
->;
+> &
+  Partial<Pick<Lead, "role_track">>;
 
 /** {{name}} or {{link_token|Anchor text}} */
 const TOKEN_RE = /\{\{\s*([a-z_]+)\s*(?:\|([^{}|]*))?\}\}/gi;
 const SIGNATURE_RE = /\{\{\s*signature\s*\}\}/gi;
-const DEFAULT_ROLE = "Senior Brand Marketing / AI Product Marketing";
+
+/** What {{target_role_opening}} says when the lead has no specific opening (read as "… roles"). */
+export const DEFAULT_ROLE_BY_TRACK: Record<Lead["role_track"], string> = {
+  HYBRID_DEFAULT: "Senior Brand Marketing, AI Product Marketing or AI Product Manager",
+  BRAND: "Senior Brand Marketing Manager",
+  AI_PMM: "AI Product Marketing Manager",
+  AI_PM: "AI Product Manager",
+};
+const DEFAULT_ROLE = DEFAULT_ROLE_BY_TRACK.HYBRID_DEFAULT;
 const isLinkToken = (k: string): k is LinkToken => (LINK_TOKENS as readonly string[]).includes(k);
 
 export function mergeVars(
@@ -48,7 +57,7 @@ export function mergeVars(
     last_name: lead.last_name?.trim() || "",
     company_name: lead.company_name?.trim() || "your team",
     job_title: lead.job_title?.trim() || "",
-    target_role_opening: lead.target_role_opening?.trim() || DEFAULT_ROLE,
+    target_role_opening: lead.target_role_opening?.trim() || (lead.role_track ? DEFAULT_ROLE_BY_TRACK[lead.role_track] : DEFAULT_ROLE),
     // Own paragraph when present; collapses to nothing (no stray blank line) when empty.
     custom_icebreaker: ice ? `${ice}\n\n` : "",
     original_subject: opts.originalSubject?.trim() || "",

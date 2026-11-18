@@ -1,4 +1,12 @@
-# Template rewrite (approved 18 Nov 2026)
+# Template rewrite (approved 18 Nov 2026) — superseded
+
+> **Superseded by migration `012_job_seeker_copy.sql` (19 Nov 2026).** The short, sales-style copy below read as generic.
+> Job-seeker outreach works differently from sales outreach. 012 rewrites the sequence from Suman's own outreach emails:
+> - The subject names the role and the person.
+> - The purpose is stated in the first two lines, followed by concrete proof and one small ask.
+> - There is a separate Touch 1 per role track.
+>
+> The notes below are kept for history only.
 
 Approved as drafted. It's applied by migration `006_best_practice_templates.sql`, which replaces the `HYBRID_DEFAULT` subjects and bodies, and new installs get it from the seed in `001`. Role-track overrides forked in the Studio and wait days are not touched.
 

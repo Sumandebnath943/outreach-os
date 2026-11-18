@@ -130,19 +130,24 @@ create index idx_events_lead on public.tracking_events(lead_id, created_at desc)
 
 insert into public.sequence_templates (role_track, touch_number, branch_variant, subject_template, body_template, wait_business_days, same_thread) values
 ('HYBRID_DEFAULT', 1, 'STANDARD',
-$t$Marketer who builds AI — {{company_name}}?$t$,
+$t$Brand Marketing & AI Product roles — Suman Debnath$t$,
 $t$Hi {{first_name}},
 
-{{custom_icebreaker}}Most teams hiring for {{target_role_opening}} end up choosing between a marketer who can't build and an AI builder who doesn't get brand. I do both:
+{{custom_icebreaker}}I'm Suman Debnath, a Senior Brand Marketing Manager with 9+ years in brand, digital and performance marketing, and for the last two years I've also been building AI products myself. I'm writing to ask whether {{company_name}} has, or expects to have, {{target_role_opening}} roles.
 
-- 9+ years leading brand, digital and performance marketing, now as Senior Brand Marketing Manager at PIBM (20+ GTM launches, 30% lower CPA).
-- 21+ AI products shipped solo in the last 2 years, including MIGI, a 46-agent operator OS running 40–50 jobs a day for under $5 total.
+What I'd bring:
 
-The live systems and 34 write-ups are on {{tracked_portfolio_url|my portfolio}}.
+- Brand and growth leadership: at PIBM I lead a cross-functional team across digital marketing, brand design and web development, grew organic traffic across a 400-page web ecosystem, and ran multiple GTM launches 99%+ on time and on budget.
+- Hands-on AI building: 21+ products shipped solo, including MIGI, a 46-agent operator OS guarded by 500+ automated eval checks and running 40–50 jobs a day for under $5 total, and ROASmind, an AI-native marketing OS unifying Meta, Google and LinkedIn ads.
+- The bridge between the two: GenAI creative pipelines I built cut design and web turnaround from weeks to hours.
 
-Open to a 15-minute call about {{target_role_opening}} roles at {{company_name}}?
+I'm based in Pune and open to roles across India, including relocation, as well as international remote roles.
 
-Best,
+The live systems and 34 technical/GTM write-ups are on {{tracked_portfolio_url|my portfolio}}. It's agentic-ready, so you can also point an AI assistant at it.
+
+If there's a fit, could we set up a 15-minute call? And if someone else handles this hiring, I'd be grateful for a pointer to them.
+
+Best regards,
 {{signature}}$t$,
 0, false),
 
@@ -150,11 +155,11 @@ Best,
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Quick follow-up on my note below. If you're hiring for {{target_role_opening}} at {{company_name}}, I can walk you through MIGI or ROASmind live in 2 minutes — quicker than reading about them. Or explore them yourself {{tracked_portfolio_url|here}}.
+Following up on my note about {{target_role_opening}} roles at {{company_name}}. If it's useful, I'd be glad to walk you or the hiring manager through MIGI or ROASmind live: 15 minutes on a screen-share, working systems rather than slides.
 
-Would a 15-minute call this week or next work?
+Would some time this week or next work?
 
-Best,
+Best regards,
 {{signature}}$t$,
 3, true),
 
@@ -162,11 +167,11 @@ Best,
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Bumping this in case it got buried. The short version: 9+ years of brand and growth leadership, plus 21+ AI products I built and shipped myself.
+Bringing this back to the top of your inbox in case it got buried. In one line: 9+ years leading brand and growth marketing, plus 21+ AI products I've built and shipped myself.
 
-Is {{company_name}} hiring for {{target_role_opening}} this quarter? A one-line reply either way helps.
+If {{company_name}} isn't hiring for {{target_role_opening}} roles right now, a one-line reply saying so, or the name of the right person, would really help.
 
-Best,
+Best regards,
 {{signature}}$t$,
 3, true),
 
@@ -174,16 +179,14 @@ Best,
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-Rather than another check-in, two short write-ups that may be useful to the {{company_name}} team:
+One more note, with something that may be useful to the {{company_name}} team even if the timing isn't right. Two short write-ups from my own work:
 
 - Agentic readiness: how structured answer blocks got ChatGPT, Claude and Perplexity citing a site within 48 hours.
-- Running a 46-agent fleet at 40–50 tasks a day for under $5 total, with model routing and 500+ automated eval checks.
+- Running a 46-agent fleet at 40–50 tasks a day for under $5 total, using model routing and 500+ automated eval checks.
 
-Both are on {{tracked_portfolio_url|my portfolio}}.
+Both are on {{tracked_portfolio_url|my portfolio}}. If a {{target_role_opening}} role opens up, I'd love to be considered.
 
-If owning both the GTM story and the AI systems behind it is ever on your roadmap, I'd love to talk.
-
-Best,
+Best regards,
 {{signature}}$t$,
 5, true),
 
@@ -191,11 +194,10 @@ Best,
 $t$Re: {{original_subject}}$t$,
 $t$Hi {{first_name}},
 
-I'll assume the timing isn't right and close the loop here — no more follow-ups from me.
+I won't keep filling your inbox, so this is my last note. If {{target_role_opening}} hiring opens up at {{company_name}} later, I'd be glad to hear from you. My work stays live {{tracked_portfolio_url|on my portfolio}}.
 
-If {{target_role_opening}} hiring opens up at {{company_name}} later, my work stays live {{tracked_portfolio_url|on my portfolio}}.
+Thanks for reading, and all the best to you and the team.
 
-All the best to you and the team,
 {{signature}}$t$,
 6, true)
 on conflict (role_track, touch_number, branch_variant) do nothing;

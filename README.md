@@ -120,13 +120,17 @@ The dossier shows these as "ignored, likely automated". They never make a lead W
 ## Setup runbook
 
 ### 1. Supabase
-1. Create a project, then run the migration files in order in the SQL Editor: `001` through `011`.
+1. Create a project, then run the migration files in order in the SQL Editor: `001` through `012`.
    A database set up earlier only needs the ones it hasn't run yet. They are all safe to re-run.
    - `006` installs the best-practice master sequence (see `docs/TEMPLATE_PROPOSAL.md`).
    - `007` adds the Telegram digest bookkeeping.
    - `008` makes Auto-Pilot the default.
    - `009` schedules the worker with Supabase Cron (see step 6). Fill in its two placeholders in the SQL Editor first.
    - `010` adds the holiday calendar, sender warm-up and out-of-office auto-resume settings, plus a daily cleanup of cron logs (keeps 7 days) for the free tier.
+   - `012` installs the job-seeker copy:
+     - Touch 1 is rewritten from your own outreach, with a separate version per role track (Brand / AI PMM / AI PM / hybrid).
+     - Subjects follow the "Role — Suman Debnath, credential" format.
+     - It also applies the updated signature.
    - `011` adds the shared email signature (Settings → *Email signature*, inserted by `{{signature}}`) and the LinkedIn URL. It switches the templates to labelled links: `{{tracked_portfolio_url|my portfolio}}` renders as a clickable phrase but still carries `ref` and UTM tags.
    - `005` grants table access to the server role. Supabase projects created since mid-2026 no longer do this automatically. Without it, the app fails with *"permission denied for table system_settings"*.
 2. Copy two values into your environment:

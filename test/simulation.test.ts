@@ -126,17 +126,18 @@ describe("end-to-end pipeline simulation", () => {
     expect(h(3, "References").split(" ")).toEqual([h(0, "Message-ID"), h(1, "Message-ID"), h(2, "Message-ID")]);
 
     // Copy & links (approved best-practice copy: short subject, ~95-word T1, one question)
-    expect(h(0, "Subject")).toBe("Marketer who builds AI — Acme AI?");
+    expect(h(0, "Subject")).toBe("AI Product Marketing Manager — Suman Debnath, marketer who builds with AI");
     expect(msgs[0].text).toMatch(/^Hi Suman,/);
-    expect(msgs[0].text).toContain("Open to a 15-minute call about AI Product Marketing Manager roles at Acme AI?");
+    expect(msgs[0].text).toContain("I'm writing to ask about AI Product Marketing Manager roles at Acme AI.");
+    expect(msgs[0].text).toContain("Open to a 15-minute call? If someone else owns product marketing hiring, I'd be grateful for a pointer.");
     const words = (s: string) => s.replace(/\(?https?:\/\/\S+\)?/g, "").split(/\s+/).filter(Boolean).length;
-    expect(words(msgs[0].text.split("\nBest,")[0])).toBeLessThanOrEqual(125); // body, excluding the signature
+    expect(words(msgs[0].text.split("\nBest regards,")[0])).toBeLessThanOrEqual(260); // body, excluding the signature
 
     // Signature: clickable words, no bare URLs, tracked links with ref + UTM (LinkedIn tracked, no UTM)
     expect(msgs[0].html).toMatch(/>my portfolio<\/a>/);
     expect(msgs[0].html).toMatch(/>Portfolio<\/a> · <a [^>]+>Résumé<\/a> · <a [^>]+>LinkedIn<\/a>/);
     expect(msgs[0].html).not.toContain(">sumandebnath.houseofnamus.com<");
-    expect(msgs[0].text).toContain("Marketer who builds AI · 9+ yrs brand & growth · 21+ AI products shipped solo");
+    expect(msgs[0].text).toContain("Marketer who builds with AI · 9+ yrs brand & growth · 21+ AI products shipped solo");
     expect(msgs[0].text).toMatch(/Résumé \(https:\/\/sumandebnath\.houseofnamus\.com\/resume\?ref=[^)]+utm_content=outreach_active-t1\)/);
     const hrefs = [...msgs[0].html.matchAll(/href="([^"]+)"/g)].map((m) => decodeURIComponent(m[1].replace(/&amp;/g, "&")));
     expect(hrefs).toHaveLength(4);
@@ -162,7 +163,7 @@ describe("end-to-end pipeline simulation", () => {
       "All follow-ups in the same Gmail thread: In-Reply-To + References chain, “Re: <original subject>”",
       "Links carry ?ref=<lead> and UTMs (acme-ai / suman-test / outreach_active-t1…t4); no phone number in the copy",
       "Links show as words (“my portfolio”, signature “Portfolio · Résumé · LinkedIn”), never bare URLs; all 4 go through the click tracker",
-      "Same 4-line signature on every touch; body of T1 stays under 125 words",
+      "Same 4-line signature on every touch; AI_PMM Touch 1 subject names the role and the person",
     ]);
   });
 
@@ -200,7 +201,7 @@ describe("end-to-end pipeline simulation", () => {
     await sim.runUntil(() => sim.touches().length === 2);
     expect(sim.touches()).toEqual(["T1", "T2A"]);
     const t2a = sim.gmail.sentTo(LEAD_EMAIL)[1];
-    expect(t2a.text).toContain("live in 2 minutes");
+    expect(t2a.text).toContain("through MIGI or ROASmind live");
     expect(t2a.text).toContain("utm_content=warm_engaged-t2a");
 
     record(sim, [
@@ -228,7 +229,7 @@ describe("end-to-end pipeline simulation", () => {
 
     await sim.runUntil(() => sim.touches().length === 2);
     expect(sim.touches()).toEqual(["T1", "T2B"]);
-    expect(sim.gmail.sentTo(LEAD_EMAIL)[1].text).toContain("Bumping this in case it got buried");
+    expect(sim.gmail.sentTo(LEAD_EMAIL)[1].text).toContain("Bringing this back to the top of your inbox");
 
     sim.advance(3 * HOUR);
     await sim.open();
@@ -698,6 +699,41 @@ describe("end-to-end pipeline simulation", () => {
     expect(days.filter((d) => d === "2026-11-23")).toHaveLength(10);
     sim.note("Worker note: Warm-up week 1 cap (10/day) reached — remaining 4 leads go out the next morning");
     record(sim, ["Week 1 of warm-up: exactly 10 sends on day 1 despite a 45/day cap; the other 4 went out on day 2"]);
+  });
+
+  it("S23 · role tracks: each lead gets the Touch 1 written for its track; follow-ups are shared", async () => {
+    const sim = new Sim("S23 · Touch 1 per role track", MON_0830_IST);
+    const cases = [
+      { tag: "brand", role: "Senior Brand Marketing Manager", track: "BRAND", subject: "Senior Brand Marketing Manager — Suman Debnath, 9+ yrs brand & growth", lead: "Senior Brand Marketing Manager at PIBM" },
+      { tag: "pmm", role: "AI Product Marketing Manager", track: "AI_PMM", subject: "AI Product Marketing Manager — Suman Debnath, marketer who builds with AI", lead: "Product marketing for AI is where my two tracks meet" },
+      { tag: "pm", role: "AI Product Manager", track: "AI_PM", subject: "AI Product Manager — Suman Debnath, 21+ AI products shipped", lead: "PentaCMD-47M" },
+      { tag: "hybrid", role: "", track: "HYBRID_DEFAULT", subject: "Brand Marketing & AI Product roles — Suman Debnath", lead: "Senior Brand Marketing, AI Product Marketing or AI Product Manager roles" },
+    ];
+    for (const c of cases) await sim.importLead(defaultLead({ email: alias(c.tag), first_name: "Priya", company_name: "Acme AI", target_role_opening: c.role || undefined }));
+    await sim.runUntil(() => cases.every((c) => sim.touches(alias(c.tag)).length === 1));
+
+    mkdirSync("test-results", { recursive: true });
+    for (const c of cases) {
+      expect(sim.lead(alias(c.tag)).role_track).toBe(c.track);
+      const m = sim.gmail.sentTo(alias(c.tag))[0];
+      expect(sim.gmail.header(m, "Subject")).toBe(c.subject);
+      expect(m.text).toContain(c.lead);
+      expect(m.text).toContain("I'm based in Pune and open to roles across India, including relocation, as well as international remote roles.");
+      expect(m.text).toContain("agentic-ready");
+      expect(m.text).not.toMatch(/\{\{|\}\}/);
+      writeFileSync(
+        `test-results/t1-${c.track.toLowerCase()}.html`,
+        `<!doctype html><meta charset="utf-8"><title>T1 ${c.track}</title><body style="margin:0;background:#fff"><div style="max-width:680px;margin:24px auto;padding:0 20px;font-family:Arial"><p style="color:#5f6368;font-size:13px;border-bottom:1px solid #e0e0e0;padding-bottom:10px"><b style="color:#202124;font-size:20px;font-weight:400">${sim.gmail.header(m, "Subject").replace(/</g, "&lt;")}</b><br>Suman Debnath → Priya · track ${c.track}</p>${m.html.replace(/<img[^>]*>/g, "")}</div></body>`,
+      );
+      sim.note(`T1 for ${c.track}: “${sim.gmail.header(m, "Subject")}”`);
+    }
+    await sim.runUntil(() => sim.touches(alias("pm")).length === 2);
+    expect(sim.gmail.sentTo(alias("pm"))[1].text).toContain("If Acme AI isn't hiring for AI Product Manager roles right now"); // shared follow-up, track-specific role
+    record(sim, [
+      "BRAND, AI_PMM, AI_PM and HYBRID leads each got their own Touch 1 (subject = role — Suman Debnath, credential)",
+      "Every Touch 1 states the purpose up front, carries the location/relocation line and the agentic-ready portfolio, no unmerged tokens",
+      "Shared follow-ups fill in the track's role (“If Acme AI isn't hiring for AI Product Manager roles right now…”)",
+    ]);
   });
 
   it("S22 · AI triage (Groq): interview request, out-of-office with a date, a reply keywords misread, and an API outage", async () => {

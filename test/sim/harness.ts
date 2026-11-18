@@ -37,19 +37,29 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 export const DAY = 24 * HOUR;
 
-/** The seeded master sequence, parsed straight from migration 001 so the simulation sends the real copy. */
+/**
+ * Templates exactly as the database ends up after the migrations: the 001 seed, then the
+ * latest copy migration (012, incl. role-track Touch 1 overrides) upserted on top — so the
+ * simulation sends the real copy.
+ */
 function seededTemplates(): Omit<SequenceTemplate, "id" | "created_at">[] {
-  const sql = readFileSync("supabase/migrations/001_init_outreach_os.sql", "utf8").replace(/\r\n/g, "\n");
   const re = /\('(\w+)', (\d), '(\w+)',\n\$t\$([\s\S]*?)\$t\$,\n\$t\$([\s\S]*?)\$t\$,\n(\d+), (true|false)\)/g;
-  return [...sql.matchAll(re)].map((m) => ({
-    role_track: m[1] as SequenceTemplate["role_track"],
-    touch_number: Number(m[2]) as SequenceTemplate["touch_number"],
-    branch_variant: m[3] as SequenceTemplate["branch_variant"],
-    subject_template: m[4],
-    body_template: m[5],
-    wait_business_days: Number(m[6]),
-    same_thread: m[7] === "true",
-  }));
+  const byKey = new Map<string, Omit<SequenceTemplate, "id" | "created_at">>();
+  for (const file of ["001_init_outreach_os.sql", "012_job_seeker_copy.sql"]) {
+    const sql = readFileSync(`supabase/migrations/${file}`, "utf8").replace(/\r\n/g, "\n");
+    for (const m of sql.matchAll(re)) {
+      byKey.set(`${m[1]}:${m[2]}:${m[3]}`, {
+        role_track: m[1] as SequenceTemplate["role_track"],
+        touch_number: Number(m[2]) as SequenceTemplate["touch_number"],
+        branch_variant: m[3] as SequenceTemplate["branch_variant"],
+        subject_template: m[4],
+        body_template: m[5],
+        wait_business_days: Number(m[6]),
+        same_thread: m[7] === "true",
+      });
+    }
+  }
+  return [...byKey.values()];
 }
 
 function defaultSettings(): Omit<SystemSettings, "updated_at"> {
@@ -86,12 +96,13 @@ function defaultSettings(): Omit<SystemSettings, "updated_at"> {
   };
 }
 
-/** linkedin_url + email_signature exactly as migration 011 seeds them. */
+/** linkedin_url (migration 011) + the current email_signature (migration 012). */
 function signatureDefaults(): Pick<SystemSettings, "linkedin_url" | "email_signature"> {
-  const sql = readFileSync("supabase/migrations/011_signature_and_link_labels.sql", "utf8").replace(/\r\n/g, "\n");
+  const m11 = readFileSync("supabase/migrations/011_signature_and_link_labels.sql", "utf8").replace(/\r\n/g, "\n");
+  const m12 = readFileSync("supabase/migrations/012_job_seeker_copy.sql", "utf8").replace(/\r\n/g, "\n");
   return {
-    linkedin_url: sql.match(/linkedin_url text default '([^']+)'/)![1],
-    email_signature: sql.match(/email_signature text default \$sig\$([\s\S]*?)\$sig\$/)![1],
+    linkedin_url: m11.match(/linkedin_url text default '([^']+)'/)![1],
+    email_signature: m12.match(/set email_signature = \$sig\$([\s\S]*?)\$sig\$/)![1],
   };
 }
 

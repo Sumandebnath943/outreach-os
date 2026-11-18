@@ -30,7 +30,9 @@ const links = previewLinks(ID, "https://sumandebnath.houseofnamus.com", "https:/
 describe("mergeVars", () => {
   it("fills variables and defaults blank first names to Team", () => {
     expect(mergeVars("Hi {{first_name}} at {{company_name}}", L({ first_name: "  " }))).toBe("Hi Team at Acme AI");
-    expect(mergeVars("{{target_role_opening}}", L())).toBe("Senior Brand Marketing / AI Product Marketing");
+    expect(mergeVars("{{target_role_opening}}", L())).toBe("Senior Brand Marketing, AI Product Marketing or AI Product Manager");
+    expect(mergeVars("{{target_role_opening}}", L({ role_track: "AI_PM" }))).toBe("AI Product Manager");
+    expect(mergeVars("{{target_role_opening}}", L({ role_track: "BRAND", target_role_opening: "Head of Brand" }))).toBe("Head of Brand");
   });
 
   it("collapses an empty icebreaker with no stray blank line", () => {
