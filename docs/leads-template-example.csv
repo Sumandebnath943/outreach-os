@@ -1,0 +1,5 @@
+first_name,last_name,email,company_name,job_title,linkedin_url,company_website,target_role_opening,geo_region,role_track,custom_icebreaker,notes
+Priya,Sharma,priya.sharma@example.com,Acme AI,Head of Talent,https://www.linkedin.com/in/example-priya,https://acme.example.com,Senior Brand Marketing Manager,INDIA,BRAND,I enjoyed Acme's recent launch film for the GenAI suite.,EXAMPLE ROW - do not upload
+Jordan,Lee,jordan.lee@example.com,Nimbus Labs,VP Product,https://www.linkedin.com/in/example-jordan,https://nimbus.example.com,AI Product Manager,US,AI_PM,,EXAMPLE ROW - do not upload
+Alex,Chen,alex.chen@example.com,Orbit,Recruiter,,,AI Product Marketing Manager,GLOBAL,,,"EXAMPLE ROW - role_track left blank, inferred as AI_PMM from the opening"
+Sam,,sam@example.com,Lumen,Talent Partner,,,,INDIA,HYBRID_DEFAULT,,EXAMPLE ROW - no opening: Hybrid Touch 1
