@@ -346,7 +346,7 @@ export default function SettingsPage() {
           <StatusRow ok={st.trackingSecretSet} label="TRACKING_SECRET" detail={st.trackingSecretSet ? "ok" : "falling back"} />
           <StatusRow ok={st.dashboardAuth} label="Dashboard password" detail={st.dashboardAuth ? "ok" : "OPEN — set DASHBOARD_PASSWORD"} />
           <StatusRow ok={baseUrlOk} label="APP_BASE_URL" detail={st.appBaseUrl} />
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             {st.googleClientConfigured ? (
               <a
                 href="/api/auth/google/start"

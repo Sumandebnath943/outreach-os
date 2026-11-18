@@ -98,6 +98,7 @@ These mappings are reused in Templates, Leads, Approvals and Analytics. Shared d
 16. Recipient-window rows stack their region label above the time fields on small screens, preventing the fixed desktop columns from overflowing at 320px.
 17. Approvals selection, Import drag-over, inactive sequence dots and the disconnected Gmail action now use shared accent/information/neutral tokens instead of hardcoded zinc/white states.
 18. Portfolio views previously appeared amber in cards/dossiers but teal in Analytics. They now share teal. Opens use blue; reply activity uses violet with a separately colored sentiment badge.
+19. Production exposes an extra Disconnect action for database-stored Gmail credentials. The connection action row now wraps at small widths; the local fixture includes this third action too.
 
 ## Verification
 
