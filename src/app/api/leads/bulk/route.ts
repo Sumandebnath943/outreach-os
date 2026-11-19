@@ -7,6 +7,7 @@ export const maxDuration = 60;
 export const POST = route(async (req: Request) => {
   const body = await readJson<{ action?: string; ids?: string[]; allMatching?: boolean; filters?: Record<string, string> }>(req);
   if (!["pause", "unpause", "trash", "restore", "delete", "archive"].includes(body.action ?? "")) return fail("Invalid action");
+  if (body.ids !== undefined && !Array.isArray(body.ids)) return fail("ids must be an array");
   const filters = filtersFrom(new URLSearchParams(body.filters));
   const trash = body.action === "restore" || body.action === "delete";
   const ids = body.allMatching

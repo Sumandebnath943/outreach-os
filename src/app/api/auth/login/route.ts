@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { createSessionToken, safeEqual, safeNext, SESSION_COOKIE, SESSION_DAYS, sessionKey } from "@/lib/session";
+import { readJson, route } from "@/lib/server/http";
 
 export const dynamic = "force-dynamic";
 
 /** POST /api/auth/login { username, password, next? } → sets the signed session cookie. */
-export async function POST(req: Request) {
-  let body: { username?: unknown; password?: unknown; next?: unknown } = {};
-  try {
-    body = await req.json();
-  } catch {}
+export const POST = route(async (req: Request) => {
+  const body = await readJson<{ username?: unknown; password?: unknown; next?: unknown }>(req);
   const password = process.env.DASHBOARD_PASSWORD;
   const user = process.env.DASHBOARD_USER || "admin";
   const next = safeNext(typeof body.next === "string" ? body.next : null);
@@ -34,4 +32,4 @@ export async function POST(req: Request) {
     maxAge: SESSION_DAYS * 86_400,
   });
   return res;
-}
+});

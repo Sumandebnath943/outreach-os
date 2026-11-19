@@ -45,6 +45,8 @@ export class FakeGmail {
   authRevoked = false;
   /** Errors thrown by the next sends, in order (e.g. a transient network error). */
   sendFailures: Error[] = [];
+  /** Simulates a message accepted by Gmail followed by a lost HTTP response. */
+  loseNextSendResponse = false;
   private n = 0;
 
   constructor(readonly me: string) {}
@@ -132,6 +134,10 @@ export class FakeGmail {
       html,
     };
     this.messages.push(msg);
+    if (this.loseNextSendResponse) {
+      this.loseNextSendResponse = false;
+      throw Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
+    }
     return { data: { id, threadId: msg.threadId } };
   }
 

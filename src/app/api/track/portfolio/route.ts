@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return new Response("bad payload", { status: 400, headers });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return new Response("bad payload", { status: 400, headers });
 
   const ref = String(body.ref ?? "");
   if (!UUID_RE.test(ref)) return new Response(null, { status: 204, headers });

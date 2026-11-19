@@ -44,6 +44,13 @@ export async function verifySessionToken(token: string | undefined, user: string
 
 /** Only same-site relative paths are allowed as post-login destinations (no open redirects). */
 export function safeNext(next: string | null | undefined, fallback = "/pipeline"): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return fallback;
+  if (!next || !next.startsWith("/") || next.includes("\\")) return fallback;
+  // Browsers strip tabs/newlines when resolving a URL ("/\t/host" becomes "//host").
+  // Validate the resolved destination as well as the literal prefix.
+  try {
+    if (new URL(next, "https://dashboard.invalid").origin !== "https://dashboard.invalid") return fallback;
+  } catch {
+    return fallback;
+  }
   return next;
 }

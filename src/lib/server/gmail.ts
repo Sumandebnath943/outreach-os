@@ -46,7 +46,7 @@ export async function sendViaGmail(
   const sent = await gmail.users.messages.send({
     userId: "me",
     requestBody: { raw, ...(threadId ? { threadId } : {}) },
-  });
+  }, { retry: false });
   const id = sent.data.id!;
   // Gmail may rewrite Message-ID; read back the authoritative header for In-Reply-To chaining.
   let messageIdHeader: string | null = null;

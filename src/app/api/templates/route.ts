@@ -23,6 +23,7 @@ export const PUT = route(async (req: Request) => {
   const rows: Omit<SequenceTemplate, "id" | "created_at">[] = [];
 
   for (const t of items) {
+    if (!t || typeof t !== "object" || Array.isArray(t)) return fail("Each template must be an object");
     if (!t.role_track || !(ROLE_TRACKS as readonly string[]).includes(t.role_track)) return fail("invalid role_track");
     if (![1, 2, 3, 4].includes(Number(t.touch_number))) return fail("touch_number must be 1-4");
     const variant = t.branch_variant ?? "STANDARD";

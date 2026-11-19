@@ -12,11 +12,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "simulate": "vitest run test/simulation.test.ts",
+    "audit:live": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/readiness-audit.ts",
     "check": "npm run lint && npm run typecheck && npm test",
     "live": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/live-test.ts"
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "postcss": "8.5.33"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.2",

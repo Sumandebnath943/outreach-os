@@ -89,7 +89,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
   const tone = TRACK_TONE[value] || GEO_TONE[value] || STATUS_TONE[value];
   const stage = (FUNNEL_STAGES as readonly string[]).includes(value) ? value : undefined;
   return (
-    <select data-tone={tone} data-stage={stage} className={cn(fieldCls, "h-9 pr-8", (tone || stage) && 'tone-chip', className)} {...props}>
+    <select data-tone={tone} data-stage={stage} className={cn(fieldCls, "h-9 pr-10", (tone || stage) && 'tone-chip', className)} {...props}>
       {children}
     </select>
   );

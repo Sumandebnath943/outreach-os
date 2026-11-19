@@ -35,6 +35,6 @@ export async function sendViaResend(
     text: msg.text,
     headers,
   });
-  if (error || !data) throw new Error(`Resend: ${error?.message ?? "unknown error"}`);
+  if (error || !data) throw Object.assign(new Error(`Resend: ${error?.message ?? "unknown error"}`), { statusCode: error?.statusCode });
   return { id: data.id };
 }

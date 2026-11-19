@@ -28,6 +28,13 @@ describe("normalizeLead", () => {
     expect(r.ok && r.lead.custom_icebreaker?.length).toBe(600);
   });
 
+  it("rejects an overlong address instead of silently changing its recipient", () => {
+    const email = `${"a".repeat(64)}@${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(59)}.com`;
+    expect(email.length).toBeGreaterThan(254);
+    expect(normalizeLead({ email, company_name: "Acme" }).ok).toBe(false);
+    expect(normalizeLead({ email: `MAILTO:${email}`, company_name: "Acme" }).ok).toBe(false);
+  });
+
   it("applies only valid bulk overrides", () => {
     const base = { email: "a@acme.ai", company_name: "Acme", target_role_opening: "AI Product Manager" };
     expect(normalizeLead(base, { role_track: "BRAND", geo_region: "US" })).toMatchObject({ lead: { role_track: "BRAND", geo_region: "US" } });

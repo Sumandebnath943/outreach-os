@@ -116,6 +116,7 @@ export const POST = route(async (req: Request) => {
   }
 
   if (body.action === "approve" || body.action === "unapprove" || body.action === "pause") {
+    if (body.leadIds !== undefined && !Array.isArray(body.leadIds)) return fail("leadIds must be an array");
     const filters = filtersFrom(new URLSearchParams(body.filters));
     if (body.action === "approve") filters.status = "PENDING";
     const ids = body.allMatching

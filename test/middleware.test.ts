@@ -97,6 +97,9 @@ describe("safeNext", () => {
     expect(safeNext("/analytics?range=7")).toBe("/analytics?range=7");
     expect(safeNext("//evil.example")).toBe("/pipeline");
     expect(safeNext("https://evil.example")).toBe("/pipeline");
+    for (const next of ["/\t/evil.example", "/\r/evil.example", "/\n/evil.example", "/\\evil.example", "///evil.example"]) {
+      expect(safeNext(next)).toBe("/pipeline");
+    }
     expect(safeNext(null)).toBe("/pipeline");
   });
 });

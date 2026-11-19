@@ -502,7 +502,7 @@ describe("end-to-end pipeline simulation", () => {
   it("S15 · transient failure retries after an hour; an invalid recipient is archived as BOUNCED", async () => {
     const sim = new Sim("S15 · Send failures", MON_0830_IST);
     await sim.importLead();
-    sim.gmail.sendFailures.push(new Error("socket hang up"));
+    sim.gmail.sendFailures.push(Object.assign(new Error("Rate limited"), { code: 429 }));
     await sim.runUntil(() => sim.touches().length === 1);
     expect(sim.logs().map((l) => l.status)).toEqual(["FAILED", "SENT"]);
     expect(sim.sentLogs()[0].sent_at).toBe("2026-11-23T05:30:00.000Z"); // retried 1h later
@@ -512,7 +512,7 @@ describe("end-to-end pipeline simulation", () => {
     sim.gmail.sendFailures.push(new Error("Invalid To header"));
     await sim.runUntil(() => sim.lead(bad).funnel_stage === "CLOSED_ARCHIVE");
     expect(sim.lead(bad).sub_stage).toBe("BOUNCED");
-    record(sim, ["“socket hang up” → FAILED log, retried 1h later and sent", "“Invalid To header” → archived as BOUNCED immediately"]);
+    record(sim, ["Explicit 429 rejection → FAILED log, retried 1h later and sent", "“Invalid To header” → archived as BOUNCED immediately"]);
   });
 
   it("S17 · analytics: a mixed 5-lead campaign produces the expected rates, funnel and touch breakdown", async () => {
@@ -1064,4 +1064,16 @@ describe("end-to-end pipeline simulation", () => {
     expect(sim.db.tables.suppressed_addresses[0].reason).toBe('Unsubscribed');
   });
 
+  it('S41 · accepted send with a lost response pauses instead of sending a duplicate', async () => {
+    const sim = new Sim('Unconfirmed provider acceptance', '2026-11-23T04:30:00Z');
+    await sim.importLead(); sim.gmail.loseNextSendResponse = true;
+    const report = await sim.cron();
+    expect(sim.gmail.sentTo(LEAD_EMAIL)).toHaveLength(1);
+    expect(sim.lead()).toMatchObject({ approval_status: 'PAUSED', next_touch_due_at: null, current_touch: 0 });
+    expect(report.notes.join(' ')).toContain('Check Sent mail');
+    expect(sim.logs()[0]).toMatchObject({ status: 'FAILED', subject: '(delivery unconfirmed)' });
+    for (let i = 0; i < 3; i++) { sim.advance(DAY); await sim.cron(); }
+    expect(sim.gmail.sentTo(LEAD_EMAIL)).toHaveLength(1);
+    record(sim, ['Provider accepted T1 but its response was lost', 'Lead paused with a visible diagnosis; three later daily runs never resend']);
+  });
 });

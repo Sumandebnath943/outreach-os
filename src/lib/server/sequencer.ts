@@ -311,7 +311,7 @@ async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>,
 export class SendError extends Error {
   constructor(
     message: string,
-    readonly kind: "HARD_BOUNCE" | "AUTH" | "TRANSIENT",
+    readonly kind: "HARD_BOUNCE" | "AUTH" | "TRANSIENT" | "UNCERTAIN",
   ) {
     super(message);
     this.name = "SendError";
@@ -331,7 +331,12 @@ function toSendError(e: unknown): SendError {
   const msg = (e as Error)?.message ?? String(e);
   if (isGmailAuthError(e) || isAuthErrorMessage(msg)) return new SendError(msg, "AUTH");
   if (isHardBounceMessage(msg)) return new SendError(msg, "HARD_BOUNCE");
-  return new SendError(msg, "TRANSIENT");
+  const error = (e && typeof e === "object" ? e : {}) as { response?: { status?: number }; status?: number; statusCode?: number; code?: string | number };
+  const status = Number(error.response?.status ?? error.status ?? error.statusCode ?? error.code);
+  // An explicit client rejection or a connection that never opened is safe to retry.
+  // A lost response / server error may follow acceptance, so never automatically resend it.
+  const neverConnected = ["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ENETUNREACH"].includes(String(error.code));
+  return new SendError(msg, neverConnected || (status >= 400 && status < 500 && status !== 408) ? "TRANSIENT" : "UNCERTAIN");
 }
 
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
@@ -724,6 +729,20 @@ export async function processQueue(trigger: string, budgetMs = 50_000): Promise<
       if (e instanceof SendError && e.kind === "AUTH") {
         report.notes.push(`Sending is blocked: ${message}`);
         break; // every other lead would fail the same way
+      }
+
+      if (e instanceof SendError && e.kind === "UNCERTAIN") {
+        // The provider may already have accepted this message. Park it before logging;
+        // neither approval mode may retry until the operator checks Sent mail.
+        must(await db().from("leads").update({ approval_status: "PAUSED", next_touch_due_at: null }).eq("id", lead.id).select("id"), "pause unconfirmed delivery");
+        must(await db().from("email_logs").insert({
+          lead_id: lead.id, is_test: lead.is_test ?? false, touch_number: lead.current_touch + 1,
+          subject: "(delivery unconfirmed)", body_html: "", provider: settings.send_provider,
+          status: "FAILED", error: `Delivery unconfirmed; check provider Sent mail before resuming. ${message}`.slice(0, 2000),
+        }).select("id"), "record unconfirmed delivery");
+        report.notes.push(`${lead.email} is paused: delivery could not be confirmed. Check Sent mail before resuming; resuming may resend this touch.`);
+        slotUsed = true;
+        break;
       }
 
       await db().from("email_logs").insert({

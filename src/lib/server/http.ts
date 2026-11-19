@@ -26,9 +26,12 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
 }
 
 export async function readJson<T = Record<string, unknown>>(req: Request): Promise<T> {
+  let body: unknown;
   try {
-    return (await req.json()) as T;
+    body = await req.json();
   } catch {
-    return {} as T;
+    throw new InputError("Invalid JSON payload");
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new InputError("JSON payload must be an object");
+  return body as T;
 }

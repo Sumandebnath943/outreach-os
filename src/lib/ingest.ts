@@ -168,9 +168,10 @@ export function normalizeLead(
   overrides: NormalizeOverrides = {},
 ): { ok: true; lead: NormalizedLead } | { ok: false; error: string } {
   const L = FIELD_LIMITS;
-  const email = clean(input.email, L.email)?.toLowerCase().replace(/^mailto:/, "") ?? "";
+  // Never shorten an address: truncation can turn a bad address into a different recipient.
+  const email = String(input.email ?? "").trim().toLowerCase().replace(/^mailto:/, "");
   if (!email) return { ok: false, error: "Missing email" };
-  if (!EMAIL_RE.test(email)) return { ok: false, error: `Invalid email "${email}"` };
+  if (email.length > L.email || !EMAIL_RE.test(email)) return { ok: false, error: `Invalid email "${email.slice(0, L.email)}"` };
 
   let first = clean(input.first_name, L.first_name);
   let last = clean(input.last_name, L.last_name);
